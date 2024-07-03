@@ -6,6 +6,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // let data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
     let data: Vec<u8> = fs::read("roms/dmg_boot_noNintendo.bin")?;
 
+    // note: gameboi instructions use both "AF" and individual "A" and "F" registers. since there
+    // are more 8bit registers than 16bit, I decided to define the 8bit ones and combine to form
+    // the 16bit ones, instead of the other way around. this was done specifically because it would
+    // mean less work combining/splitting registers.
     let mut A: u8 = 0;
     let mut F: u8 = 0; // note: not individually addressable, opperations usually only deal with AF and never F itself.
     let mut B: u8 = 0;
@@ -14,6 +18,62 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let mut E: u8 = 0;
     let mut H: u8 = 0;
     let mut L: u8 = 0;
+
+    let mut SP: u16 = 0;
+    let mut PC: u16 = 0;
+
+    macro_rules! set_16bit {
+        ( $index:expr, $value_lsb:expr, $value_msb:expr ) => {
+            match $index
+            {
+                0b00 => {
+                    // println!("setting BC.");
+                    B = $value_lsb;
+                    C = $value_msb;
+                }
+                0b01 => {
+                    // println!("setting DE.");
+                    D = $value_lsb;
+                    E = $value_msb;
+                }
+                0b10 => {
+                    // println!("setting HL.");
+                    H = $value_lsb;
+                    L = $value_msb;
+                }
+                0b11 => {
+                    // println!("setting SP.");
+                    SP = (($value_msb as u16) << 8 | $value_lsb as u16);
+                }
+                _ => { println!("panik!"); }
+            }
+        };
+    }
+    /*
+    let mut set_16bit_whole = |index: u8, value: u8|
+    {
+        match index
+        {
+            0b00 => {
+                A = value >> 8;
+                F = value & 0x00FF;
+            }
+            0b01 => {
+                B = value >> 8;
+                C = value & 0x00FF;
+            }
+            0b10 => {
+                D = value >> 8;
+                E = value & 0x00FF;
+            }
+            0b11 => {
+                H = value >> 8;
+                L = value & 0x00FF;
+            }
+            _ => { println!("panik!"); }
+        }
+    };
+    */
 
     macro_rules! gimme_flag {
         (z) => (F>>7 & 1);
@@ -34,15 +94,33 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         (c) => (F &= 0b11101111);
     }
 
-    let mut SP: u16 = 0;
-    let mut PC: u16 = 0;
 
-    // the stack holds addresses, thus it is the same type as our SP (stack pointer)
+    // this thing creates a u16 var "AF_", and 2 u8 pointers "A_" and "F_" which point to the Hi
+    // and Lo sections of the u16 thing, respectively. for now, other solutions are being seeked
+    // since I do not want to make the whole main functiom unsafe (which would be giving up)
+    /*
+    let mut AF_: u16 = 0x1234;
+    let F_: *mut u8 = (&mut AF_ as *mut u16) as *mut u8;
+    unsafe {
+        let A_: *mut u8 = F_.offset(1);
+        println!("AF_:{:X?}", AF_);
+        println!("A_:{:X?} F_:{:X?}", *A_, *F_);
+        *A_ = 0x69;
+        *F_ = 0x88;
+        println!("A_:{:X?} F_:{:X?}", *A_, *F_);
+        println!("AF_:{:X?}", AF_);
+    }
+    */
+
+    // let BC: *mut u16 =
+    // let DE: *mut u16 =
+    // let HL: *mut u16 =
+
     let mut stack: Vec<u16> = Vec::new();
 
     loop {
-        let mut current_instruction: u8 = data[SP as usize];
-        print!("{:2X?} : {:2X?} - ", SP, current_instruction);
+        let mut current_instruction: u8 = data[PC as usize];
+        print!("{:2X?} : {:2X?} - ", PC, current_instruction);
 
         match current_instruction {
             0x00 => {
@@ -61,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             0xCB => {
                 // used in boot rom
                 println!("PREFIX INSTRUCTION LUL");
-                SP += 1
+                PC += 1
             },
             0x2F => {
                 println!("COMPLEMENT ACCUMULATOR");
@@ -69,37 +147,43 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             0xCD => {
                 // used in boot rom; completed
                 // adds address of next instruction to stack, and then executes an implicit "JP" i.e. implicitly jumps
-                println!("CALL {:4X?} {:4X?}", data[(SP+1) as usize], data[(SP+2) as usize]);
+                println!("CALL {:4X?} {:4X?}", data[(PC+1) as usize], data[(PC+2) as usize]);
 
-                stack.push(SP);
+                stack.push(PC);
                 // note: immediately contiguous word is lsb and then the one after is the msb of target jump address
-                SP = (data[(SP+1) as usize] as u16) + 0x100 * (data[(SP+2) as usize] as u16);
-                // SP += 2
-                SP -= 1 // minus 1 because of automatic increment at the end of the while loop
+                PC = (data[(PC+1) as usize] as u16) + 0x100 * (data[(PC+2) as usize] as u16);
+                // PC += 2
+                PC -= 1 // minus 1 because of automatic increment at the end of the while loop
             },
             0xCE => {
                 // used in boot rom; completed
-                println!("ADC literal {:X?}", data[(SP+1) as usize]);
+                println!("ADC literal {:X?}", data[(PC+1) as usize]);
 
                 // execute sum and deal with overflow
-                let mut result = A.overflowing_add(data[(SP+1) as usize]);
-                if (result.1) { raise_flag!(c); }
+                let mut result = A.overflowing_add(data[(PC+1) as usize]);
+                if result.1 { raise_flag!(c); }
                 result = result.0.overflowing_add(gimme_flag!(c));
-                if (result.1) { raise_flag!(c); }
+                if result.1 { raise_flag!(c); }
 
                 // rest of flags
-                if (result.0 == 0) { raise_flag!(z) };
+                if result.0 == 0 { raise_flag!(z) };
                 lower_flag!(n);
-                if ((A & 0xF0) != (result.0 & 0xF0)) { raise_flag!(h) };
+                if (A & 0xF0 != result.0 & 0xF0) { raise_flag!(h) };
 
                 A = result.0;
-                SP += 1;
+                PC += 1;
                 // println!("A is now {:X?} | F is now {:X?}", A, F);
             },
             0b00000001 | 0b00010001 | 0b00100001 | 0b00110001 => { // 0b00xx0001
                 // used in boot rom
-                println!("load from nn");
-                SP += 2
+                let selected_register = (current_instruction >> 4) & 0x03;
+                let byte1 = data[(PC+1) as usize];
+                let byte2 = data[(PC+2) as usize];
+                println!("load nn {:X?} {:X?} {:X?}", selected_register, byte1, byte2);
+
+                set_16bit!(selected_register, byte1, byte2);
+
+                PC += 2
             },
             0b00000011 | 0b00010011 | 0b00100011 | 0b00110011 => { // 0b00xx0011
                 // used in boot rom
@@ -118,7 +202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             0b00000110 | 0b00001110 | 0b00010110 | 0b00011110 | 0b00100110 | 0b00101110 | 0b00110110 | 0b00111110 => { // 0b00xxx110
                 // used in boot rom
                 println!("load data n to 8bit reg");
-                SP += 1
+                PC += 1
             },
 
             0b00001111 => {
@@ -131,7 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             0b00011000 => {
                 // used in boot rom
                 println!("uncond jump");
-                SP += 1
+                PC += 1
             },
 
             // 00xxx010 (maybe?)
@@ -161,7 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             0b00100000 | 0b00101000 | 0b00110000 | 0b00111000 => { // 0b001xx000
                 // used in boot rom
                 println!("cond relative jump");
-                SP += 1
+                PC += 1
             },
             0b00001001 | 0b00011001 | 0b00101001 | 0b00111001 => { // 0b00xx1001
                 println!("add with 16bit & store");
@@ -213,13 +297,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
             0b11000010 | 0b11001010 | 0b11010010 | 0b11011010 => { // 0b110xx010
                 println!("conditional jump");
-                SP += 2
+                PC += 2
             },
 
             0b11100000 | 0b11110000 => { // 0b111x0000 (?)
                 // used in boot rom
                 println!("load from accumulator direct");
-                SP += 1
+                PC += 1
             },
 
             0b11100010 | 0b11110010  => { // 0b111x0010 (?)
@@ -232,7 +316,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 // used in boot rom
                 println!("load to/from A to/from 16bit nn");
                 // println!("load to A from 16bit nn");
-                SP += 2
+                PC += 2
             },
 
             0b11111001 => {
@@ -246,7 +330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             0b11111110 => {
                 // used in boot rom
                 println!("compare immediate");
-                SP += 1
+                PC += 1
             },
 
             0b11001001 => {
@@ -266,6 +350,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             }
         }
 
-        SP += 1;
+        PC += 1;
     }
 }
