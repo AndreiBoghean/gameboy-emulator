@@ -49,6 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             }
         };
     }
+
     /*
     let mut set_16bit_whole = |index: u8, value: u8|
     {
@@ -175,8 +176,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 // println!("A is now {:X?} | F is now {:X?}", A, F);
             },
             0b00000001 | 0b00010001 | 0b00100001 | 0b00110001 => { // 0b00xx0001
-                // used in boot rom
-                let selected_register = (current_instruction >> 4) & 0x03;
+                // used in boot rom; completed
+                let selected_register = (current_instruction >> 4) & 0b11;
                 let byte1 = data[(PC+1) as usize];
                 let byte2 = data[(PC+2) as usize];
                 println!("load nn {:X?} {:X?} {:X?}", selected_register, byte1, byte2);
@@ -186,18 +187,111 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 PC += 2
             },
             0b00000011 | 0b00010011 | 0b00100011 | 0b00110011 => { // 0b00xx0011
-                // used in boot rom
-                println!("increment 16bit");
+                // used in boot rom; complete
+                let selected_register = (current_instruction >> 4) & 0b11;
+                println!("INC 16bit {:X?}", selected_register);
+
+                fn increment (A: &mut u8, B: &mut u8)
+                {
+                    let result = (*A).overflowing_add(1);
+                    *A = result.0;
+
+                    if result.1 {
+                        *B = (*B).overflowing_add(1).0;
+                    }
+                }
+
+                match selected_register
+                {
+                    0b00 => {
+                        // println!("setting BC.");
+                        increment(&mut B, &mut C);
+                    }
+                    0b01 => {
+                        // println!("setting DE.");
+                        increment(&mut D, &mut E);
+                    }
+                    0b10 => {
+                        // println!("setting HL.");
+                        increment(&mut H, &mut L);
+                    }
+                    0b11 => {
+                        // println!("setting SP.");
+                        SP += 1;
+                    }
+                    _ => { println!("panik!"); }
+                }
             },
 
             0b00000100 | 0b00001100 | 0b00010100 | 0b00011100 | 0b00100100 | 0b00101100 | 0b00110100 | 0b00111100 => { // 0b00xxx100
-                // used in boot rom
-                println!("increment 8bit register");
+                // used in boot rom; completed
+                let selected_register = (current_instruction >> 3) & 0b111;
+                println!("INC 8bit {:X?}", selected_register);
+
+                macro_rules! increment {
+                    ($A:expr) =>
+                    {
+                        {
+                            let result = $A.overflowing_add(1);
+
+                            if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                            if result.1 {  raise_flag!(c); } else { lower_flag!(c); }
+                            if (result.0 == 0b00010000) {raise_flag!(h); } else { lower_flag!(h); }
+                            lower_flag!(n);
+
+                            A = result.0;
+                        }
+                    }
+                }
+
+                match selected_register
+                {
+                    0b00 => increment!(B),
+                    0b00 => increment!(C),
+                    0b01 => increment!(D),
+                    0b01 => increment!(E),
+                    0b10 => increment!(H),
+                    0b10 => increment!(L),
+                    0b11 => increment!(data[ ((H as u16) << 4 + L as u16) as usize]),
+                    0b11 => increment!(A),
+                    _ => println!("panik!")
+                }
             },
 
             0b00000101 | 0b00001101 | 0b00010101 | 0b00011101 | 0b00100101 | 0b00101101 | 0b00110101 | 0b00111101 => { // 0b00xxx101
-                // used in boot rom
-                println!("decrement 8bit");
+                // used in boot rom; complete
+
+                let selected_register = (current_instruction >> 3) & 0b111;
+                println!("DEC 8bit {:X?}", selected_register);
+
+                macro_rules! decrement {
+                    ($A:expr) =>
+                    {
+                        {
+                            let result = $A.overflowing_add(0b11111110);
+
+                            if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                            if result.0 == 0b11111111 { raise_flag!(c);}  else { lower_flag!(c); }
+                            if (result.0 == 0b00001111) {raise_flag!(h); } else { lower_flag!(h); }
+                            raise_flag!(n);
+
+                            A = result.0;
+                        }
+                    }
+                }
+
+                match selected_register
+                {
+                    0b00 => decrement!(B),
+                    0b00 => decrement!(C),
+                    0b01 => decrement!(D),
+                    0b01 => decrement!(E),
+                    0b10 => decrement!(H),
+                    0b10 => decrement!(L),
+                    0b11 => decrement!(data[ ((H as u16) << 4 + L as u16) as usize]),
+                    0b11 => decrement!(A),
+                    _ => println!("panik!")
+                }
             },
             0b00000110 | 0b00001110 | 0b00010110 | 0b00011110 | 0b00100110 | 0b00101110 | 0b00110110 | 0b00111110 => { // 0b00xxx110
                 // used in boot rom
