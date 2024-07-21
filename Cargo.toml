@@ -1,0 +1,8 @@
+[package]
+name = "gameboi"
+version = "0.1.0"
+authors = ["Andrei"]
+
+[dependencies]
+pixels = "0.13.0"
+winit = {version = "0.30.4", features = ["rwh_05"] }

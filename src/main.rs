@@ -1,8 +1,97 @@
 use std::fs;
+use std::thread;
+use std::time::Duration;
+
+extern crate winit;
+use winit::{
+    event_loop::{EventLoop, ActiveEventLoop, ControlFlow},
+    window::{Window, WindowId},
+    application::ApplicationHandler,
+    event::{WindowEvent}
+};
+
+extern crate pixels;
+use pixels::{Pixels, SurfaceTexture};
+
+
 #[allow(non_snake_case)]
+
+#[derive(Default)]
+struct App {
+    window: Option<Window>,
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        println!("we've resumed from something");
+        // create winit window
+        self.window = Some(event_loop.create_window(Window::default_attributes()).unwrap());
+
+        // setup 'pixels' with aforementioned window
+        let window = self.window.as_ref().unwrap();
+        let size = window.inner_size();
+        let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
+        let mut pixels = Pixels::new(420, 420, surface_texture).unwrap();
+
+        // Clear the pixel buffer
+        let frame = pixels.frame_mut();
+        for pixel in frame.chunks_exact_mut(4) {
+            pixel[0] = 0x00; // R
+            pixel[1] = 0x00; // G
+            pixel[2] = 0x99; // B
+            pixel[3] = 0xff; // A
+        }
+
+        // Draw it to the `SurfaceTexture`
+        pixels.render();
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
+            },
+            WindowEvent::RedrawRequested => {
+                // Redraw the application.
+                //
+                // It's preferable for applications that do not render continuously to render in
+                // this event rather than in AboutToWait, since rendering in here allows
+                // the program to gracefully handle redraws requested by the OS.
+
+                // Draw.
+
+                // Queue a RedrawRequested event.
+                //
+                // You only need to call this if you've determined that you need to redraw in
+                // applications which do not always need to. Applications that redraw continuously
+                // can render here instead.
+                self.window.as_ref().unwrap().request_redraw();
+            }
+            _ => (),
+        }
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     println!("ello wold :D");
+
+    let event_loop = EventLoop::new().unwrap();
+    // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
+    // dispatched any events. This is ideal for games and similar applications.
+    event_loop.set_control_flow(ControlFlow::Poll);
+    // ControlFlow::Wait pauses the event loop if no events are available to process.
+    // This is ideal for non-game applications that only update in response to user
+    // input, and uses significantly less power/CPU time than ControlFlow::Poll.
+    // event_loop.set_control_flow(ControlFlow::Wait);
+    println!("y1");
+    let mut app = App::default();
+    println!("y2");
+    // todo: the blow run_app is blocking while the window is up. make it async.
+    event_loop.run_app(&mut app);
+    println!("y3");
+    let window = app.window.unwrap();
+    println!("y4");
 
     // let data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
     let mut data: Vec<u8> = fs::read("roms/dmg_boot_noNintendo.bin")?;
@@ -27,6 +116,71 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let mut PC: u16 = 0;
 
     let mut IME: bool = false;
+
+    // begin defining a whole lotta hardware registers (note: description | readable/writable | gb models)
+    // btw we dont actually need these YET
+    /*
+    let JOYP = &mut data[0xFF00]; // Joypad | Mixed | All
+    let SB = &mut data[0xFF01]; // Serial transfer data | R/W | All
+    let SC = &mut data[0xFF02]; // Serial transfer control | R/W | Mixed
+    let DIV = &mut data[0xFF04]; // Divider register | R/W | All
+    let TIMA = &mut data[0xFF05]; // Timer counter | R/W | All
+    let TMA = &mut data[0xFF06]; // Timer modulo | R/W | All
+    let TAC = &mut data[0xFF07]; // Timer control | R/W | All
+    let IF = &mut data[0xFF0F]; // Interrupt flag | R/W | All
+    let NR10 = &mut data[0xFF10]; // Sound channel 1 sweep | R/W | All
+    let NR11 = &mut data[0xFF11]; // Sound channel 1 length timer & duty cycle | Mixed | All
+    let NR12 = &mut data[0xFF12]; // Sound channel 1 volume & envelope | R/W | All
+    let NR13 = &mut data[0xFF13]; // Sound channel 1 period low | W | All
+    let NR14 = &mut data[0xFF14]; // Sound channel 1 period high & control | Mixed | All
+    let NR21 = &mut data[0xFF16]; // Sound channel 2 length timer & duty cycle | Mixed | All
+    let NR22 = &mut data[0xFF17]; // Sound channel 2 volume & envelope | R/W | All
+    let NR23 = &mut data[0xFF18]; // Sound channel 2 period low | W | All
+    let NR24 = &mut data[0xFF19]; // Sound channel 2 period high & control | Mixed | All
+    let NR30 = &mut data[0xFF1A]; // Sound channel 3 DAC enable | R/W | All
+    let NR31 = &mut data[0xFF1B]; // Sound channel 3 length timer | W | All
+    let NR32 = &mut data[0xFF1C]; // Sound channel 3 output level | R/W | All
+    let NR33 = &mut data[0xFF1D]; // Sound channel 3 period low | W | All
+    let NR34 = &mut data[0xFF1E]; // Sound channel 3 period high & control | Mixed | All
+    let NR41 = &mut data[0xFF20]; // Sound channel 4 length timer | W | All
+    let NR42 = &mut data[0xFF21]; // Sound channel 4 volume & envelope | R/W | All
+    let NR43 = &mut data[0xFF22]; // Sound channel 4 frequency & randomness | R/W | All
+    let NR44 = &mut data[0xFF23]; // Sound channel 4 control | Mixed | All
+    let NR50 = &mut data[0xFF24]; // Master volume & VIN panning | R/W | All
+    let NR51 = &mut data[0xFF25]; // Sound panning | R/W | All
+    let NR52 = &mut data[0xFF26]; // Sound on/off | Mixed | All
+    let F3F = &mut data[0xFF3]; // Wave RAM | Storage for one of the sound channels’ waveform | R/W | All
+    let LCDC = &mut data[0xFF40]; // LCD control | R/W | All
+    let STAT = &mut data[0xFF41]; // LCD status | Mixed | All
+    let SCY = &mut data[0xFF42]; // Viewport Y position | R/W | All
+    let SCX = &mut data[0xFF43]; // Viewport X position | R/W | All
+    let LY = &mut data[0xFF44]; // LCD Y coordinate | R | All
+    let LYC = &mut data[0xFF45]; // LY compare | R/W | All
+    let DMA = &mut data[0xFF46]; // OAM DMA source address & start | R/W | All
+    let BGP = &mut data[0xFF47]; // BG palette data | R/W | DMG
+    let OBP0 = &mut data[0xFF48]; // OBJ palette 0 data | R/W | DMG
+    let OBP1 = &mut data[0xFF49]; // OBJ palette 1 data | R/W | DMG
+    let WY = &mut data[0xFF4A]; // Window Y position | R/W | All
+    let WX = &mut data[0xFF4B]; // Window X position plus 7 | R/W | All
+    let KEY1 = &mut data[0xFF4D]; // Prepare speed switch | Mixed | CGB
+    let VBK = &mut data[0xFF4F]; // VRAM bank | R/W | CGB
+    let HDMA1 = &mut data[0xFF51]; // VRAM DMA source high | W | CGB
+    let HDMA2 = &mut data[0xFF52]; // VRAM DMA source low | W | CGB
+    let HDMA3 = &mut data[0xFF53]; // VRAM DMA destination high | W | CGB
+    let HDMA4 = &mut data[0xFF54]; // VRAM DMA destination low | W | CGB
+    let HDMA5 = &mut data[0xFF55]; // VRAM DMA length/mode/start | R/W | CGB
+    let RP = &mut data[0xFF56]; // Infrared communications port | Mixed | CGB
+    let BCPS= &mut data[0xFF68]; //BGPI | Background color palette specification / Background palette index | R/W | CGB
+    let BCPD= &mut data[0xFF69]; //BGPD | Background color palette data / Background palette data | R/W | CGB
+    let OCPS= &mut data[0xFF6A]; //OBPI | OBJ color palette specification / OBJ palette index | R/W | CGB
+    let OCPD= &mut data[0xFF6B]; //OBPD | OBJ color palette data / OBJ palette data | R/W | CGB
+    let OPRI = &mut data[0xFF6C]; // Object priority mode | R/W | CGB
+    let SVBK = &mut data[0xFF70]; // WRAM bank | R/W | CGB
+    let PCM12 = &mut data[0xFF76]; // Audio digital outputs 1 & 2 | R | CGB
+    let PCM34 = &mut data[0xFF77]; // Audio digital outputs 3 & 4 | R | CGB
+    let IE = &mut data[0xFFFF]; // Interrupt enable | R/W | All
+    */
+    // end defining a whole lotta hardware registers
 
     macro_rules! eval_16bit {
         ($A:expr, $B:expr) => { ((($A as u16) << 4) + ($B as u16)) }
@@ -172,6 +326,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // let BC: *mut u16 =
     // let DE: *mut u16 =
     // let HL: *mut u16 =
+
+    // renderer thread, a.k.a the PPU.
+    thread::spawn( || {
+        let mut i = 0;
+        loop {
+            println!("we're on loop {}", i);
+            i += 1;
+            thread::sleep(Duration::from_millis(1000));
+        }
+    });
+
 
     let mut skip_increment = false;
     loop {
@@ -825,6 +990,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         if !skip_increment { PC += 1; }
         else { skip_increment = false; }
 
-        if PC >= 0x100 { break Ok(()); }
+        if PC >= 0x100 { break; }
     }
+
+    loop { }
 }
