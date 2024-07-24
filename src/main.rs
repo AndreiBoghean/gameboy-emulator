@@ -2,6 +2,8 @@ use std::fs;
 use std::thread;
 use std::time::Duration;
 
+use std::sync::{Arc, Mutex};
+
 extern crate winit;
 use winit::{
     event_loop::{EventLoop, ActiveEventLoop, ControlFlow},
@@ -19,6 +21,7 @@ use pixels::{Pixels, SurfaceTexture};
 #[derive(Default)]
 struct App {
     window: Option<Window>,
+    data: Arc<Mutex<Vec<u8>>>
 }
 
 impl ApplicationHandler for App {
@@ -47,6 +50,10 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        let gimmeee = self.data.lock().unwrap();
+        println!("windows moment {}", gimmeee[0]);
+        drop(gimmeee);
+        // println!("we're on i {}", self.data.lock().unwrap()[0]);
         match event {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
@@ -76,6 +83,25 @@ impl ApplicationHandler for App {
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     println!("ello wold :D");
 
+    // let data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
+    let mut data: Vec<u8> = fs::read("roms/dmg_boot_noNintendo.bin")?;
+    data.resize(0xFFFF+1, 0);
+    let gimme_data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(data.clone()));
+
+    let data_wanter = gimme_data.clone();
+    let data_wanter2 = gimme_data.clone();
+    thread::spawn(move || {
+        let mut i = 0;
+        loop {
+            // println!("we're on loop {}", i);
+            i += 1;
+            let mut data_haver = data_wanter.lock().unwrap();
+            data_haver[0] = i;
+            drop(data_haver);
+            thread::sleep(Duration::from_millis(1000));
+        }
+    });
+
     let event_loop = EventLoop::new().unwrap();
     // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
     // dispatched any events. This is ideal for games and similar applications.
@@ -86,6 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // event_loop.set_control_flow(ControlFlow::Wait);
     println!("y1");
     let mut app = App::default();
+    app.data = data_wanter2;
     println!("y2");
     // todo: the blow run_app is blocking while the window is up. make it async.
     event_loop.run_app(&mut app);
@@ -93,9 +120,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let window = app.window.unwrap();
     println!("y4");
 
-    // let data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
-    let mut data: Vec<u8> = fs::read("roms/dmg_boot_noNintendo.bin")?;
-    data.resize(0xFFFF+1, 0);
 
     // note: gameboi instructions use both "AF" and individual "A" and "F" registers. since there
     // are more 8bit registers than 16bit, I decided to define the 8bit ones and combine to form
@@ -328,15 +352,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // let HL: *mut u16 =
 
     // renderer thread, a.k.a the PPU.
-    thread::spawn( || {
-        let mut i = 0;
-        loop {
-            println!("we're on loop {}", i);
-            i += 1;
-            thread::sleep(Duration::from_millis(1000));
-        }
-    });
-
 
     let mut skip_increment = false;
     loop {
