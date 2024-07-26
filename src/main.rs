@@ -21,7 +21,8 @@ use pixels::{Pixels, SurfaceTexture};
 #[derive(Default)]
 struct App {
     window: Option<Window>,
-    data: Arc<Mutex<Vec<u8>>>
+    data: Arc<Mutex<Vec<u8>>>,
+    pixels: Option<Pixels>
 }
 
 impl ApplicationHandler for App {
@@ -34,10 +35,11 @@ impl ApplicationHandler for App {
         let window = self.window.as_ref().unwrap();
         let size = window.inner_size();
         let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
-        let mut pixels = Pixels::new(420, 420, surface_texture).unwrap();
+        self.pixels = Some(Pixels::new(420, 420, surface_texture).unwrap());
+
 
         // Clear the pixel buffer
-        let frame = pixels.frame_mut();
+        let frame = self.pixels.as_mut().unwrap().frame_mut();
         for pixel in frame.chunks_exact_mut(4) {
             pixel[0] = 0x00; // R
             pixel[1] = 0x00; // G
@@ -46,14 +48,27 @@ impl ApplicationHandler for App {
         }
 
         // Draw it to the `SurfaceTexture`
-        pixels.render();
+        self.pixels.as_mut().unwrap().render();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let gimmeee = self.data.lock().unwrap();
         println!("windows moment {}", gimmeee[0]);
+
+        // Clear the pixel buffer
+        let frame = self.pixels.as_mut().unwrap().frame_mut();
+        for pixel in frame.chunks_exact_mut(4) {
+            pixel[0] = (gimmeee[0] & 0b11100000); // R
+            pixel[1] = ((gimmeee[0]) & 0b00011100) << 3; // G
+            pixel[2] = ((gimmeee[0]) & 0b00000111) << 5; // B
+            pixel[3] = 0xff; // A
+        }
         drop(gimmeee);
-        // println!("we're on i {}", self.data.lock().unwrap()[0]);
+
+        // Draw it to the `SurfaceTexture`
+        self.pixels.as_mut().unwrap().render();
+
+
         match event {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
@@ -83,8 +98,12 @@ impl ApplicationHandler for App {
 fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     println!("ello wold :D");
 
-    // let data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
-    let mut data: Vec<u8> = fs::read("roms/dmg_boot_noNintendo.bin")?;
+    // let mut data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
+    
+    let mut data: Vec<u8> = fs::read("roms/Tetris.gb")?;
+    let mut boot_data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
+    for i in 0..0x100 { data[i] = boot_data[i]; }
+    
     data.resize(0xFFFF+1, 0);
     let gimme_data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(data.clone()));
 
@@ -93,10 +112,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     thread::spawn(move || {
         let mut i = 0;
         loop {
-            // println!("we're on loop {}", i);
             i += 1;
             let mut data_haver = data_wanter.lock().unwrap();
-            data_haver[0] = i;
+            data_haver[0] = i*4;
             drop(data_haver);
             thread::sleep(Duration::from_millis(1000));
         }
@@ -355,7 +373,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let mut skip_increment = false;
     loop {
-        println!("\nA:{:X?} F:{:X?} B:{:X?} C:{:X?} D:{:X?} E:{:X?} H:{:X?} L:{:X?}", A, F, B, C, D, E, H, L);
+        println!("\nS: {:?}", &stack[u16::MAX as usize -5..]);
+        // println!("LCDC: {:X?}", data[0xFF40]); // LCD control | R/W | All
+        println!("A:{:X?} F:{:X?} B:{:X?} C:{:X?} D:{:X?} E:{:X?} H:{:X?} L:{:X?}", A, F, B, C, D, E, H, L);
 
         let current_instruction: u8 = data[PC as usize];
         // print!("S: {:?} | PC: {:2X?} | IR:{:2X?} - ", &stack[u16::MAX as usize -5..], PC, current_instruction);
@@ -617,8 +637,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             },
             0b00011000 => {
                 // used in boot rom(?); complete
-                println!("JR relative, {:X?}", data[(PC+1) as usize]);
-                PC += data[(PC+1) as usize] as u16
+                let offset = data[(PC+1) as usize];
+                println!("JR relative, {:X?}", offset);
+
+                if (offset >> 7) & 0b1 == 0b1
+                { PC -= (offset ^ 0xFF).overflowing_add(1).0 as u16; }
+                else
+                { PC += offset as u16}
             },
 
             0b00000010 | 0b00010010 | 0b00100010 | 0b00110010 => { // 00xx0010 
@@ -679,10 +704,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
             0b00100000 | 0b00101000 | 0b00110000 | 0b00111000 => { // 0b001xx000
                 // used in boot rom; completed
-                println!("cond relative jump");
-
                 let e = data[(PC+1) as usize] as u16;
-                if gimme_flag!(z) != 0 { PC = PC+e-1; }
+                println!("{}", format!("cond relative jump {e:#b}"));
+
+                if gimme_flag!(z) != 0 {
+                    if (e >> 7) & 0b1 == 0b1
+                    { PC = PC - ((e ^ 0xFF) + 1); }
+                    else
+                    { PC = PC+e-1; }
+                }
 
                 PC += 1;
             },
@@ -898,11 +928,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                 let direction = (current_instruction >> 4) & 0b1;
                 let use_Creg = (current_instruction >> 1) & 0b1;
-
                 println!("load to/from accumulator (in)direct d:{:X?} C:{:X?}", direction, use_Creg);
 
                 let offset: usize;
-                if use_Creg == 1 { offset = (0xFF00 & C as u16) as usize; } else { offset = data[(PC+1) as usize] as usize; } // TODO: does rust have cond ? trueVal : FalsVal
+                if use_Creg == 1 { offset = (0xFF00 | C as u16) as usize; } else { offset = (0xFF00 | data[(PC+1) as usize] as u16) as usize; } // TODO: does rust have cond ? trueVal : FalsVal
                 if direction == 1 { A = data[offset]; } else { data[offset] = A; }
 
                 PC += 1;
@@ -1005,8 +1034,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         if !skip_increment { PC += 1; }
         else { skip_increment = false; }
 
+        // if PC >= 0x100 { break; }
         if PC >= 0x100 { break; }
     }
 
-    loop { }
+    println!("LCDC: {:X?}", data[0xFF40]); // LCD control | R/W | All
+    // loop { }
+    Ok(())
 }
