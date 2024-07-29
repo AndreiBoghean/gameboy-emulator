@@ -54,13 +54,13 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
 
         // wait for the program to stabilise
-        thread::sleep(Duration::from_millis(5000));
+        // thread::sleep(Duration::from_millis(5000));
         let data = self.data.lock().unwrap();
 
         // println!("tilemap:\n{:X?}", &data[0x9800..0x9C00]);
-        println!("tilemap:\n{:X?}", &data[0x8000..0x8800]);
+        // println!("tilemap:\n{:X?}", &data[0x8000..0x8200]);
         // println!("tilemap:\n{:X?}", &data[0x107..0x907]);
-        thread::sleep(Duration::from_millis(100000000));
+        // thread::sleep(Duration::from_millis(100000000));
 
         // Clear the pixel buffer
         let frame = self.pixels.as_mut().unwrap().frame_mut();
@@ -374,9 +374,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             i = i.overflowing_add(1).0;
             data[0] = i.overflowing_mul(4).0;
 
-            println!("\nS: {:?}", &stack[u16::MAX as usize -5..]);
+            println!("\nS: {:X?}", &stack[u16::MAX as usize -5..]);
             // println!("LCDC: {:X?}", data[0xFF40]); // LCD control | R/W | All
-            println!("A:{:X?} F:{:X?} B:{:X?} C:{:X?} D:{:X?} E:{:X?} H:{:X?} L:{:X?} | SP:{:X?}, HL:{:X?}", A, F, B, C, D, E, H, L, SP, eval_16bit!(H, L));
+            println!("A:{:X?} F:{:X?} B:{:X?} C:{:X?} D:{:X?} E:{:X?} H:{:X?} L:{:X?} | SP:{:X?}, HL:{:X?} | ZNHC____:{}", A, F, B, C, D, E, H, L, SP, eval_16bit!(H, L), format!("{F:#b}"));
 
             let current_instruction: u8 = data[PC as usize];
             // print!("S: {:?} | PC: {:2X?} | IR:{:2X?} - ", &stack[u16::MAX as usize -5..], PC, current_instruction);
@@ -627,9 +627,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // used in boot rom; complete
 
                     let carry: u8 = gimme_flag!(c);
-                    println!("ROTATE LEFT {:} {:X?}", carry, A);
+                    println!("RLA A:{:X?} c:{:}", A, carry);
 
-                    if A >> 6 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+
+                    if A >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                     A = A << 1 | carry;
 
                     lower_flag!(z);
@@ -664,15 +665,24 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         0b10 => { // 00xxx010 (maybe?)
                             // println!("load data to HL+ addr from Areg");
                             data[eval_16bit!(H, L) as usize] = A;
-                            set_16bit!(0b10, (eval_16bit!(H, L) as u8).overflowing_add(1).0, ((eval_16bit!(H, L) >> 8) as u8).overflowing_add(1).0)
+
+                            let newHL = eval_16bit!(H, L).overflowing_add(1).0;
+                            set_16bit!(0b10, newHL as u8, (newHL >> 8) as u8)
                         },
                         0b11 => { // 00xxx010 (maybe?)
                             // println!("load data to HL- addr from Areg");
                             data[eval_16bit!(H, L) as usize] = A;
-                            set_16bit!(0b10, (eval_16bit!(H, L) as u8).overflowing_add(0xFE).0, ((eval_16bit!(H, L) >> 8) as u8).overflowing_add(0xFE).0)
+
+                            let newHL = eval_16bit!(H, L).overflowing_add(0xFFFF).0;
+                            set_16bit!(0b10, newHL as u8, (newHL >> 8) as u8);
                         },
                         _ => { println!("panik! {:X?}", selected_register); }
                     }
+
+                    println!("tiledat: {:X?}", &data[0x8000..0x8200]);
+                    println!("tilemap: {:X?}", &data[0x9800..0x9C00]);
+                    println!("logo_cart: {:X?}", &data[0x104..0x104+16*3]);
+                    println!("logo_dmg : {:X?}", &data[0xA8..0xA8+16*3]);
                 },
 
                 0b00001010 | 0b00011010 | 0b00101010 | 0b00111010 => { // 00xx1010 
@@ -718,7 +728,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => todo!()
                     };
 
-                    println!("cond relative jump x:{} dest:{} f:{}", e, format!("{e:#b}"), gimme_flag!(z));
+                    println!("cond relative jump x:{} dest:{} f:{}", e, format!("{e:#b}"), relevant_flag);
 
                     if relevant_flag != 0 {
                         if sign == 1
@@ -743,7 +753,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register_B = (current_instruction) & 0b111;
                     println!("load {:X?}:{:} {:X?}:{:}", selected_register_A, repr_8bit!(selected_register_A), selected_register_B, repr_8bit!(selected_register_B));
 
-                    let reg1: &mut u8 = &mut match selected_register_A {
+                    let reg2 = match selected_register_B {
                         0b000 => B,
                         0b001 => C,
                         0b010 => D,
@@ -755,19 +765,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => todo!()
                     };
 
-                    let reg2: &mut u8 = &mut match selected_register_B {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
+                    let reg1: &mut u8 = match selected_register_A {
+                        0b000 => &mut B,
+                        0b001 => &mut C,
+                        0b010 => &mut D,
+                        0b011 => &mut E,
+                        0b100 => &mut H,
+                        0b101 => &mut L,
+                        0b110 => &mut data[ eval_16bit!(H, L) as usize],
+                        0b111 => &mut A,
                         _ => todo!()
                     };
-
-                    *reg1 = *reg2;
+                    println!("reg1:{:X?} reg2:{:X?}", *reg1, reg2);
+                    *reg1 = reg2;
+                    println!("reg1:{:X?} reg2:{:X?}", *reg1, reg2);
                 },
                 0x80..=0x87 => {
                     // used in boot rom; complete
@@ -986,7 +997,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                 0b11111110 => {
                     // used in boot rom; completed
-                    let val = data[(SP.overflowing_add(1).0) as usize];
+                    let val = data[(PC.overflowing_add(1).0) as usize];
                     println!("CP n {:X?}", val);
 
                     let result = A.overflowing_add((val ^ 0xFF).overflowing_add(1).0); // two's compliment moment
