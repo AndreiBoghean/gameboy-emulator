@@ -76,23 +76,39 @@ impl ApplicationHandler for App {
             let tile_id: u16 = tilemap[i] as u16;
             if true || tile_id == 0x19 {
                 let tile_data = &tiledata[(tile_id*16) as usize .. ((tile_id+1)*16) as usize];
-                println!("I:{} tileID:{:X?} tile_data:{:X?}", i, tile_id, tile_data);
+                // println!("I:{} tileID:{:X?} tile_data:{:X?}", i, tile_id, tile_data);
 
                 let col: usize = i % 32 as usize;
                 let row: usize = (i / 32) as u32 as usize;
 
                 for tile_y in 0..8 {
                     let tile_row_vec = &tile_data[tile_y*2..(tile_y+1)*2];
-                    let tile_row: u16 = ((tile_row_vec[0] as u16) << 8) | (tile_row_vec[1] as u16);
+                    // let tile_row: u16 = ((tile_row_vec[0] as u16) << 8) | (tile_row_vec[1] as u16);
+
+                    let mut binA = tile_row_vec[0] as u16;
+                    let mut binB = tile_row_vec[0] as u16;
+                    // println!("binA:{}", format!("{binA:#b}"));
+                    // println!("binB:{}", format!("{binB:#b}"));
+                    for b_p in 0..8 {
+
+                        binA = ((binA & (0xFFFF << 7-b_p)) << 1) | (binA & 0b01111111 >> (b_p));
+                        binB = ((binB & (0xFFFF << 7-b_p)) << 1) | (binB & 0b01111111 >> (b_p));
+                        // println!("bp:{} binA:{}", b_p, format!("{binA:#b}"));
+                        // println!("bp:{} binB:{}", b_p, format!("{binB:#b}"));
+                    }
+
+                    binB = binB >> 1;
+                    let tile_row: u16 = binA | binB;
+
                     for b_i in 0..8 {
                         let colour_id = (tile_row >> (14-b_i*2)) & 0b11;
-                        print!("{}|", colour_id);
+                        // print!("{}|", colour_id);
                         frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+0] = (0xff * colour_id/4) as u8;
                         frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+1] = (0xff * colour_id/4) as u8;
                         frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+2] = (0xff * colour_id/4) as u8;
                         frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+3] = 0xff;
                     }
-                    println!("");
+                    // println!("");
                 }
             }
         }
