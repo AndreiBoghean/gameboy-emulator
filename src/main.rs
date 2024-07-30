@@ -35,7 +35,10 @@ impl ApplicationHandler for App {
         let window = self.window.as_ref().unwrap();
         let size = window.inner_size();
         let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
-        self.pixels = Some(Pixels::new(160, 144, surface_texture).unwrap());
+
+        // temporarily use 256, since we're starting off by not implementing scrolling
+        // self.pixels = Some(Pixels::new(160, 144, surface_texture).unwrap());
+        self.pixels = Some(Pixels::new(256, 256, surface_texture).unwrap());
 
 
         // Clear the pixel buffer
@@ -62,14 +65,55 @@ impl ApplicationHandler for App {
         // println!("tilemap:\n{:X?}", &data[0x107..0x907]);
         // thread::sleep(Duration::from_millis(100000000));
 
+        let tilemap = &data[0x9800..0x9C00];
+        let tiledata = &data[0x8000..0x8800];
+        
+
         // Clear the pixel buffer
         let frame = self.pixels.as_mut().unwrap().frame_mut();
+
+        for i in 0..tilemap.len() {
+            let tile_id: u16 = tilemap[i] as u16;
+            if true || tile_id == 0x19 {
+                let tile_data = &tiledata[(tile_id*16) as usize .. ((tile_id+1)*16) as usize];
+                println!("I:{} tileID:{:X?} tile_data:{:X?}", i, tile_id, tile_data);
+
+                let col: usize = i % 32 as usize;
+                let row: usize = (i / 32) as u32 as usize;
+
+                for tile_y in 0..8 {
+                    let tile_row_vec = &tile_data[tile_y*2..(tile_y+1)*2];
+                    let tile_row: u16 = ((tile_row_vec[0] as u16) << 8) | (tile_row_vec[1] as u16);
+                    for b_i in 0..8 {
+                        let colour_id = (tile_row >> (14-b_i*2)) & 0b11;
+                        print!("{}|", colour_id);
+                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+0] = (0xff * colour_id/4) as u8;
+                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+1] = (0xff * colour_id/4) as u8;
+                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+2] = (0xff * colour_id/4) as u8;
+                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+3] = 0xff;
+                    }
+                    println!("");
+                }
+            }
+        }
+
+        /*
+        for i in 0..frame.len() {
+            let row = i % 256;
+            let col = (i / 256).floor();
+
+            let sprite = tilemap
+        }
+        */
+
+        /*
         for pixel in frame.chunks_exact_mut(4) {
             pixel[0] = (data[0] & 0b11100000); // R
             pixel[1] = ((data[0]) & 0b00011100) << 3; // G
             pixel[2] = ((data[0]) & 0b00000111) << 5; // B
             pixel[3] = 0xff; // A
         }
+        */
 
         // Draw it to the `SurfaceTexture`
         self.pixels.as_mut().unwrap().render();
@@ -117,6 +161,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let data_wanter = gimme_data.clone();
     let data_wanter2 = gimme_data.clone();
+
+    let mut _data = data_wanter.lock().unwrap();
+    _data[0xFF44] = 0x90;
+    drop(_data);
+
 
     // CPU thread
     thread::spawn(move || {
@@ -679,10 +728,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => { println!("panik! {:X?}", selected_register); }
                     }
 
-                    println!("tiledat: {:X?}", &data[0x8000..0x8200]);
-                    println!("tilemap: {:X?}", &data[0x9800..0x9C00]);
-                    println!("logo_cart: {:X?}", &data[0x104..0x104+16*3]);
-                    println!("logo_dmg : {:X?}", &data[0xA8..0xA8+16*3]);
+                    // println!("tiledat: {:X?}", &data[0x8000..0x8200]);
+                    // println!("tilemap: {:X?}", &data[0x9800..0x9C00]);
+                    // println!("logo_cart: {:X?}", &data[0x104..0x104+16*3]);
+                    // println!("logo_dmg : {:X?}", &data[0xA8..0xA8+16*3]);
                 },
 
                 0b00001010 | 0b00011010 | 0b00101010 | 0b00111010 => { // 00xx1010 
@@ -1059,11 +1108,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             if !skip_increment { PC += 1; }
             else { skip_increment = false; }
 
-            if PC >= 0x100 { break; }
-            // if PC == 0x34 { break; }
+            // if PC >= 0x100 { break; }
+            if PC == 0x66 { break; }
             // if PC >= 0x100 { PC = 0; }
 
-            thread::sleep(Duration::from_millis( 1000 * 1/4194304 ));
+            // thread::sleep(Duration::from_millis( 1000 * 1/4194304 ));
             // thread::sleep(Duration::from_millis(100));
     }
 
