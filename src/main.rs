@@ -67,6 +67,7 @@ impl ApplicationHandler for App {
 
         let tilemap = &data[0x9800..0x9C00];
         let tiledata = &data[0x8000..0x8800];
+        // println!("tiledata: {:X?}", tiledata);
         
 
         // Clear the pixel buffer
@@ -467,15 +468,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = prefix_instruction & 0b111;
                     print!("PREFIX INSTRUCTION LUL {:X?} | ", prefix_instruction);
 
-                    let reg: &mut u8 = &mut match selected_register {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
+                    let reg: &mut u8 = match selected_register {
+                        0b000 => &mut B,
+                        0b001 => &mut C,
+                        0b010 => &mut D,
+                        0b011 => &mut E,
+                        0b100 => &mut H,
+                        0b101 => &mut L,
+                        0b110 => &mut data[ eval_16bit!(H, L) as usize],
+                        0b111 => &mut A,
                         _ => todo!()
                     };
 
