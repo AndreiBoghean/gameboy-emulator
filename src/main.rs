@@ -25,6 +25,9 @@ struct App {
     pixels: Option<Pixels>
 }
 
+// note: to enable scroll_debug feature, which shows the full 256x256 internal screen, in addition to highlighting the smaller 144x160 LCD window
+// run with "cargo run --features scroll_debug"
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         println!("we've resumed from something");
@@ -36,9 +39,10 @@ impl ApplicationHandler for App {
         let size = window.inner_size();
         let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
 
-        // temporarily use 256, since we're starting off by not implementing scrolling
-        // self.pixels = Some(Pixels::new(160, 144, surface_texture).unwrap());
-        self.pixels = Some(Pixels::new(256, 256, surface_texture).unwrap());
+        #[cfg(feature = "scroll_debug")]
+        { self.pixels = Some(Pixels::new(256, 256, surface_texture).unwrap()); println!("scroll de bug!!!"); }
+        #[cfg(not(feature = "scroll_debug"))]
+        { self.pixels = Some(Pixels::new(144, 160, surface_texture).unwrap()); }
 
 
         // Clear the pixel buffer
@@ -58,7 +62,7 @@ impl ApplicationHandler for App {
 
         // wait for the program to stabilise
         // thread::sleep(Duration::from_millis(5000));
-        let data = self.data.lock().unwrap();
+        let mut data = self.data.lock().unwrap();
 
         // println!("tilemap:\n{:X?}", &data[0x9800..0x9C00]);
         // println!("tilemap:\n{:X?}", &data[0x8000..0x8200]);
@@ -68,11 +72,11 @@ impl ApplicationHandler for App {
         let tilemap = &data[0x9800..0x9C00];
         let tiledata = &data[0x8000..0x8800];
         // println!("tiledata: {:X?}", tiledata);
-        
 
-        // Clear the pixel buffer
-        let frame = self.pixels.as_mut().unwrap().frame_mut();
+        let mut frame: Vec<u8> = Vec::new();
+        frame.resize(4*256*256, 0);
 
+        // for i in 0..tilemap.len() {
         for i in 0..tilemap.len() {
             let tile_id: u16 = tilemap[i] as u16;
             if true || tile_id == 0x19 {
@@ -111,6 +115,76 @@ impl ApplicationHandler for App {
                     }
                     // println!("");
                 }
+            }
+        }
+
+
+        // TODO: replace these with the actual named labels for hardware flags. (once we fix those).
+        // let start_x: u32 = data[0xFF43] as u32;
+        // let start_y: u32 = data[0xFF42] as u32;
+        let mut start_x: i32 = data[0xFF43] as i32;
+        let mut start_y: i32 = data[0xFF42] as i32;
+        data[0xFF42] = data[0xFF42].overflowing_add(5).0;
+
+        /*
+        println!("start_y:{}", start_y);
+        if start_y <= 4 {
+            data[0xFF43] = data[0xFF43].overflowing_add(5).0;
+        }
+        */
+        
+        // Clear the pixel buffer
+        let real_frame = self.pixels.as_mut().unwrap().frame_mut();
+
+        #[cfg(feature = "scroll_debug")]
+        {
+            for i in 0..256*256 {
+                real_frame[i*4+0] = 0x00;
+                real_frame[i*4+1] = 0x00;
+                real_frame[i*4+2] = 0xff;
+                real_frame[i*4+3] = 0xff;
+            }
+        }
+
+        for i in 0..144*160 {
+            // how many pixels from the left and from the top is the current pixel we're rending? (current pixel dictated by i)
+            let viewport_x: i32 = i % 144;
+            let viewport_y: i32 = (i / 144) as usize as i32;
+
+            // what is the pixel number of the top left corner of the 256x256 canvas, accounting for offsets?
+            let mut frame_offset: i32 = ((start_x+start_y*256));
+
+            // what is the pixel number for the last pixel in the current row?
+            let frame_row_end = ((viewport_y+1)*256);
+
+            // what offset do we need to use in order to properly "wrap around"?
+            let mut overflow_offset_x: i32 = 0;
+            let mut overflow_offset_y: i32 = 0;
+            // if frame_offset+(viewport_x+viewport_y*256) >= frame_row_end { overflow_offset_x -= 256; }
+            if (overflow_offset_x+overflow_offset_y+frame_offset+(viewport_x+viewport_y*256)) >= frame_row_end { overflow_offset_x -= 256; }
+            if (overflow_offset_x+overflow_offset_y+frame_offset+(viewport_x+viewport_y*256)) >= 256*256 { overflow_offset_y -= 256*256; }
+
+            // println!("{} >= {}", frame_offset+(viewport_x+viewport_y*256), frame_row_end);
+
+            let frame_i = overflow_offset_x+overflow_offset_y+frame_offset+(viewport_x+viewport_y*256);
+            // println!("i:{} i^:{} sX:{} sY:{} overX:{} overY:{} frame:{} sum:{}",
+            //     i, 144*160, start_x, start_y, overflow_offset_x, overflow_offset_y, frame_offset, frame_i );
+
+
+            #[cfg(feature = "scroll_debug")]
+            {
+                // code for rendering a small window in a full 256*256 "Pixels" object
+                real_frame[(frame_i*4+0) as usize] = frame[(frame_i*4+0) as usize];
+                real_frame[(frame_i*4+1) as usize] = frame[(frame_i*4+1) as usize];
+                real_frame[(frame_i*4+2) as usize] = frame[(frame_i*4+2) as usize];
+                real_frame[(frame_i*4+3) as usize] = frame[(frame_i*4+3) as usize];
+            }
+            #[cfg(not(feature = "scroll_debug"))]
+            {
+                real_frame[(i*4+0) as usize] = frame[(frame_i*4+0) as usize];
+                real_frame[(i*4+1) as usize] = frame[(frame_i*4+1) as usize];
+                real_frame[(i*4+2) as usize] = frame[(frame_i*4+2) as usize];
+                real_frame[(i*4+3) as usize] = frame[(frame_i*4+3) as usize];
             }
         }
 
@@ -1121,7 +1195,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 }
             }
 
-            drop(data);
             if !skip_increment { PC += 1; }
             else { skip_increment = false; }
 

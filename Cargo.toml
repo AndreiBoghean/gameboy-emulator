@@ -6,3 +6,6 @@ authors = ["Andrei"]
 [dependencies]
 pixels = "0.13.0"
 winit = {version = "0.30.4", features = ["rwh_05"] }
+
+[features]
+scroll_debug = []
