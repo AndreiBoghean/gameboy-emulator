@@ -124,8 +124,8 @@ impl ApplicationHandler for App {
         // let start_y: u32 = data[0xFF42] as u32;
         let mut start_x: i32 = data[0xFF43] as i32;
         let mut start_y: i32 = data[0xFF42] as i32;
-        data[0xFF42] = data[0xFF42].overflowing_add(5).0;
-
+        
+        // data[0xFF42] = data[0xFF42].overflowing_add(5).0;
         /*
         println!("start_y:{}", start_y);
         if start_y <= 4 {
@@ -514,9 +514,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             i = i.overflowing_add(1).0;
             data[0] = i.overflowing_mul(4).0;
 
-            println!("\nS: {:X?}", &stack[u16::MAX as usize -5..]);
-            // println!("LCDC: {:X?}", data[0xFF40]); // LCD control | R/W | All
-            println!("A:{:X?} F:{:X?} B:{:X?} C:{:X?} D:{:X?} E:{:X?} H:{:X?} L:{:X?} | SP:{:X?}, HL:{:X?} | ZNHC____:{}", A, F, B, C, D, E, H, L, SP, eval_16bit!(H, L), format!("{F:#b}"));
+            #[cfg(not(feature = "minimal_print"))]
+            {
+            println!("\nS: {:X?} A:{:X?} F:{:X?} B:{:X?} C:{:X?} D:{:X?} E:{:X?} H:{:X?} L:{:X?} | SP:{:X?}, HL:{:X?} | ZNHC____:{} | sX:{} sY:{}",
+                &stack[u16::MAX as usize -5..], A, F, B, C, D, E, H, L, SP, eval_16bit!(H, L), format!("{F:#b}"), data[0xFF43], data[0xFF42]);
+            }
 
             let current_instruction: u8 = data[PC as usize];
             // print!("S: {:?} | PC: {:2X?} | IR:{:2X?} - ", &stack[u16::MAX as usize -5..], PC, current_instruction);
@@ -684,7 +686,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                                 if (result.0 == 0b00010000) {raise_flag!(h); } else { lower_flag!(h); }
                                 lower_flag!(n);
 
-                                A = result.0;
+                                $A = result.0;
                             }
                         }
                     }
@@ -1199,10 +1201,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             else { skip_increment = false; }
 
             // if PC >= 0x100 { break; }
-            if PC == 0x66 { break; }
+            if data[0xFF42] == 3 { break; }
+            // if PC == 0x66 { break; }
             // if PC >= 0x100 { PC = 0; }
 
-            // thread::sleep(Duration::from_millis( 1000 * 1/4194304 ));
+            drop(data);
+            thread::sleep(Duration::from_millis( 1000 * 1/4194304 ));
             // thread::sleep(Duration::from_millis(100));
     }
 

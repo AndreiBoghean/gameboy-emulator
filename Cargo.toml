@@ -9,3 +9,4 @@ winit = {version = "0.30.4", features = ["rwh_05"] }
 
 [features]
 scroll_debug = []
+minimal_print = []
