@@ -788,6 +788,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     { PC -= (offset ^ 0xFF).overflowing_add(1).0 as u16; }
                     else
                     { PC += offset as u16}
+
+                    PC += 1;
                 },
 
                 0b00000010 | 0b00010010 | 0b00100010 | 0b00110010 => { // 00xx0010 
@@ -1201,7 +1203,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             else { skip_increment = false; }
 
             // if PC >= 0x100 { break; }
-            if data[0xFF42] == 3 { break; }
+
+            // break when boot rom logo finishes scrolling
+            // if data[0xFF42] == 3 { break; }
+            
             // if PC == 0x66 { break; }
             // if PC >= 0x100 { PC = 0; }
 
