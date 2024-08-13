@@ -707,6 +707,29 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     }
                 },
 
+                0b00001011 | 0b00011011 | 0b00101011 | 0b00111011 => { // 0b00xx1011
+                    // used in boot rom; complete
+
+                    let selected_register = (current_instruction >> 4) & 0b11;
+                    println!("DEC 16bit {:2X?}:{:}", selected_register, repr_16bit!(SP, selected_register));
+
+                    fn decrement (A: &mut u8, B: &mut u8)
+                    {
+                        let result = (*B).overflowing_add(0xFF); // -1 with two's complement
+                        if result.0 >= *B { *A = (*A).overflowing_add(0xFF).0; }
+                        *B = result.0;
+
+                    }
+
+                    match selected_register
+                    {
+                        0b00 => decrement(&mut B, &mut C),
+                        0b01 => decrement(&mut D, &mut E),
+                        0b10 => decrement(&mut H, &mut L),
+                        0b11 => SP -= 1,
+                        _ => println!("panik!")
+                    }
+                },
                 0b00000101 | 0b00001101 | 0b00010101 | 0b00011101 | 0b00100101 | 0b00101101 | 0b00110101 | 0b00111101 => { // 0b00xxx101
                     // used in boot rom; complete
 
@@ -742,6 +765,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => println!("panik!")
                     }
                 },
+
                 0b00000110 | 0b00001110 | 0b00010110 | 0b00011110 | 0b00100110 | 0b00101110 | 0b00110110 | 0b00111110 => { // 0b00xxx110
                     // used in boot rom; completed
                     let selected_register = (current_instruction >> 3) & 0b111;
@@ -1104,7 +1128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     if use_Creg == 1 { offset = (0xFF00 | C as u16) as usize; } else { offset = (0xFF00 | data[(PC+1) as usize] as u16) as usize; } // TODO: does rust have cond ? trueVal : FalsVal
                     if direction == 1 { A = data[offset]; } else { data[offset] = A; }
 
-                    PC += 1;
+                    if use_Creg != 1 { PC += 1; }
 
                 },
 
@@ -1195,14 +1219,25 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     println!("uncond func call");
                     println!("NOT IMPLEMENTED!!!");
                 },
+                0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => { // undefined opcodes
+                    println!("UNDEFINED OPCODE!!");
+                },
                 _ => {
                     // used in boot rom, with 0xED
-                    println!("anything, {:2X?}, {:?}", current_instruction, current_instruction);
+                    println!("PANIK! UNCONSIDERED INSTRUCTION!!!, {:2X?}", current_instruction);
                 }
             }
 
             if !skip_increment { PC += 1; }
             else { skip_increment = false; }
+
+            if data[0xFF50] != 0
+            {
+                println!("UNMAPPING BOOT ROM!!!");
+                let original_data: Vec<u8> = fs::read("roms/Tetris.gb").unwrap();
+                for i in 0..0x100 { data[i] = original_data[i]; }
+                data[0xFF50] = 0;
+            }
 
             // if PC >= 0x100 { break; }
 
