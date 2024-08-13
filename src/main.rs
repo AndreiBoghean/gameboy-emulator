@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use std::fs;
 use std::thread;
 use std::time::Duration;
@@ -16,7 +18,6 @@ extern crate pixels;
 use pixels::{Pixels, SurfaceTexture};
 
 
-#[allow(non_snake_case)]
 
 #[derive(Default)]
 struct App {
@@ -55,14 +56,14 @@ impl ApplicationHandler for App {
         }
 
         // Draw it to the `SurfaceTexture`
-        self.pixels.as_mut().unwrap().render();
+        let _ = self.pixels.as_mut().unwrap().render();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
 
         // wait for the program to stabilise
         // thread::sleep(Duration::from_millis(5000));
-        let mut data = self.data.lock().unwrap();
+        let data = self.data.lock().unwrap();
 
         // println!("tilemap:\n{:2X?}", &data[0x9800..0x9C00]);
         // println!("tilemap:\n{:2X?}", &data[0x8000..0x8200]);
@@ -122,8 +123,8 @@ impl ApplicationHandler for App {
         // TODO: replace these with the actual named labels for hardware flags. (once we fix those).
         // let start_x: u32 = data[0xFF43] as u32;
         // let start_y: u32 = data[0xFF42] as u32;
-        let mut start_x: i32 = data[0xFF43] as i32;
-        let mut start_y: i32 = data[0xFF42] as i32;
+        let start_x: i32 = data[0xFF43] as i32;
+        let start_y: i32 = data[0xFF42] as i32;
         
         // data[0xFF42] = data[0xFF42].overflowing_add(5).0;
         /*
@@ -152,10 +153,10 @@ impl ApplicationHandler for App {
             let viewport_y: i32 = (i / 144) as usize as i32;
 
             // what is the pixel number of the top left corner of the 256x256 canvas, accounting for offsets?
-            let mut frame_offset: i32 = ((start_x+start_y*256));
+            let frame_offset: i32 = start_x+start_y*256;
 
             // what is the pixel number for the last pixel in the current row?
-            let frame_row_end = ((viewport_y+1)*256);
+            let frame_row_end = (viewport_y+1)*256;
 
             // what offset do we need to use in order to properly "wrap around"?
             let mut overflow_offset_x: i32 = 0;
@@ -207,7 +208,7 @@ impl ApplicationHandler for App {
         */
 
         // Draw it to the `SurfaceTexture`
-        self.pixels.as_mut().unwrap().render();
+        let _ = self.pixels.as_mut().unwrap().render();
 
         // drop data, thus releasing the mutex on it.
         drop(data);
@@ -244,7 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // let mut data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
     
     let mut data: Vec<u8> = fs::read("roms/Tetris.gb")?;
-    let mut boot_data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
+    let boot_data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
     for i in 0..0x100 { data[i] = boot_data[i]; }
     
     data.resize(0xFFFF+1, 0);
@@ -898,7 +899,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let sign = e >> 7;
                     if sign == 1 { value = (value ^ 0xFF).overflowing_add(1).0; } // two's compliment moment
 
-                    let relevant_flag = match (current_instruction) {
+                    let relevant_flag = match current_instruction {
                         0b00100000 => 1-gimme_flag!(z),
                         0b00101000 => gimme_flag!(z),
                         0b00110000 => 1-gimme_flag!(c),
@@ -1253,14 +1254,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             // break when boot rom logo finishes scrolling
             // if data[0xFF42] == 3 { break; }
             
-            // if PC == 0x66 { break; }
+            if PC == 0x9999 { break; }
             // if PC >= 0x100 { PC = 0; }
 
             drop(data);
             thread::sleep(Duration::from_millis( 1000 * 1/4194304 ));
             // thread::sleep(Duration::from_millis(100));
-    }
+        }
 
+        println!("IME: {}", IME);
     });
 
     let event_loop = EventLoop::new().unwrap();
@@ -1271,17 +1273,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // This is ideal for non-game applications that only update in response to user
     // input, and uses significantly less power/CPU time than ControlFlow::Poll.
     // event_loop.set_control_flow(ControlFlow::Wait);
-    println!("y1");
     let mut app = App::default();
     app.data = data_wanter2;
-    println!("y2");
-    // todo: the blow run_app is blocking while the window is up. make it async.
-    event_loop.run_app(&mut app);
-    println!("y3");
-    let window = app.window.unwrap();
-    println!("y4");
+    let _ = event_loop.run_app(&mut app);
 
-    println!("LCDC: {:2X?}", data[0xFF40]); // LCD control | R/W | All
-    // loop { }
     Ok(())
 }
