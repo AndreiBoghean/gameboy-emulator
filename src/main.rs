@@ -883,6 +883,14 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     }
                 },
 
+                0b11000011 => {
+                    let lsb = data[(PC+1) as usize] as u16;
+                    let msb = (data[(PC+2) as usize] as u16) << 8;
+
+                    println!("uncond absolute jump dest1:{:2X?} dest2:{:2X?}", msb, lsb);
+                    PC = msb | lsb;
+                    skip_increment = true;
+                },
                 0b00100000 | 0b00101000 | 0b00110000 | 0b00111000 => { // 0b001xx000
                     // used in boot rom; completed
                     let e = data[(PC+1) as usize] as u16;
@@ -909,6 +917,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                     PC += 1; // move 1 forward because this is a 2 word instruction
                 },
+
                 0b00001001 | 0b00011001 | 0b00101001 | 0b00111001 => { // 0b00xx1001
                     println!("add with 16bit & store");
                     println!("NOT IMPLEMENTED!!!");
