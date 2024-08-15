@@ -125,6 +125,9 @@ impl ApplicationHandler for App {
         // let start_y: u32 = data[0xFF42] as u32;
         let start_x: i32 = data[0xFF43] as i32;
         let start_y: i32 = data[0xFF42] as i32;
+
+        // drop data, thus releasing the mutex on it.
+        drop(data);
         
         // data[0xFF42] = data[0xFF42].overflowing_add(5).0;
         /*
@@ -151,6 +154,10 @@ impl ApplicationHandler for App {
             // how many pixels from the left and from the top is the current pixel we're rending? (current pixel dictated by i)
             let viewport_x: i32 = i % 144;
             let viewport_y: i32 = (i / 144) as usize as i32;
+
+            let mut data = self.data.lock().unwrap();
+            data[0xFF44] = viewport_y as u8;
+            drop(data);
 
             // what is the pixel number of the top left corner of the 256x256 canvas, accounting for offsets?
             let frame_offset: i32 = start_x+start_y*256;
@@ -209,9 +216,6 @@ impl ApplicationHandler for App {
 
         // Draw it to the `SurfaceTexture`
         let _ = self.pixels.as_mut().unwrap().render();
-
-        // drop data, thus releasing the mutex on it.
-        drop(data);
 
         match event {
             WindowEvent::CloseRequested => {
@@ -604,7 +608,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // note: immediately contiguous word is lsb and then the one after is the msb of target jump address
                     PC = (data[(PC+1) as usize] as u16) + 0x100 * (data[(PC+2) as usize] as u16);
                     // PC += 2
-                    PC -= 1 // minus 1 because of automatic increment at the end of the while loop
+                    skip_increment = true;
                 },
                 0xCE => {
                     // used in boot rom; completed
@@ -922,10 +926,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b00001001 | 0b00011001 | 0b00101001 | 0b00111001 => { // 0b00xx1001
                     println!("add with 16bit & store");
                     println!("NOT IMPLEMENTED!!!");
+                    break;
                 },
                 0x76 => {
                     println!("HALT");
                     println!("NOT IMPLEMENTED!!!");
+                    break;
                 },
                 0x40..=0x7F => { // matching anything under 0b01xxxyyy for a load instruction from register yyy to xxx (?)
                     // used in boot rom; complete
@@ -989,6 +995,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0x88..=0x8F => {
                     println!("ADC");
                     println!("NOT IMPLEMENTED!!!");
+                    break;
                 },
                 0x90..=0x97 => {
                     // used in boot rom; completed
@@ -1020,6 +1027,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0x98..=0x9F => {
                     println!("SBC");
                     println!("NOT IMPLEMENTED!!!");
+                    break;
                 },
                 0xA0..=0xA7 => {
                     // used in boot rom; completed
@@ -1062,9 +1070,22 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => { println!("panik!"); }
                     }
                 },
-                0xB0..=0xB7 => { // not used rn
-                    println!("OR");
-                    println!("NOT IMPLEMENTED!!!");
+                0xB0..=0xB7 => {
+                    let selected_register = current_instruction & 0b111;
+                    println!("OR, {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                    match selected_register
+                    {
+                        0b000 => A |= B,
+                        0b001 => A |= C,
+                        0b010 => A |= D,
+                        0b011 => A |= E,
+                        0b100 => A |= H,
+                        0b101 => A |= L,
+                        0b110 => A |= data[eval_16bit!(H, L) as usize],
+                        0b111 => A |= A,
+                        _ => { println!("panik!"); }
+                    }
                 },
                 0xB8..=0xBF => {
                     // used in boot rom; completed
@@ -1095,6 +1116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b11000000 | 0b11001000 | 0b11010000 | 0b11011000 => { // 0b110xx000
                     println!("ret");
                     println!("NOT IMPLEMENTED!!!");
+                    break;
                 },
 
                 0b11000001 | 0b11010001 | 0b11100001 | 0b11110001 => { // 0b11xx0001
@@ -1122,6 +1144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b11000010 | 0b11001010 | 0b11010010 | 0b11011010 => { // 0b110xx010
                     println!("conditional jump");
                     println!("NOT IMPLEMENTED!!!");
+                    break;
                     PC += 2
                 },
 
@@ -1132,13 +1155,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                     let direction = (current_instruction >> 4) & 0b1;
                     let use_Creg = (current_instruction >> 1) & 0b1;
-                    println!("load to/from accumulator (in)direct d:{:2X?} C:{:2X?}", direction, use_Creg);
+                    print!("load to({})/from({}) accumulator (in)direct C:{:2X?}", direction, 1-direction, use_Creg);
 
                     let offset: usize;
                     if use_Creg == 1 { offset = (0xFF00 | C as u16) as usize; } else { offset = (0xFF00 | data[(PC+1) as usize] as u16) as usize; } // TODO: does rust have cond ? trueVal : FalsVal
                     if direction == 1 { A = data[offset]; } else { data[offset] = A; }
 
-                    if use_Creg != 1 { PC += 1; }
+                    if use_Creg != 1 {
+                        print!(" {:4X?}", data[(PC+1) as usize]);
+                        PC += 1;
+                    }
+                    print!("\n");
 
                 },
 
@@ -1167,6 +1194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b11111001 => {
                     println!("load SP from HL");
                     println!("NOT IMPLEMENTED!!!");
+                    break;
                 },
 
                 0b11111011 => {
@@ -1226,8 +1254,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     SP -= 2;
                 },
                 0b11000111 | 0b11001111 | 0b11010111 | 0b11011111 | 0b11100111 | 0b11101111 | 0b11110111 | 0b11111111 => { // 0b11xxx111
-                    println!("uncond func call");
-                    println!("NOT IMPLEMENTED!!!");
+                    let selected_jump_vec = (current_instruction >> 3) & 0b111;
+                    println!("RST / FN CALL {}", selected_jump_vec);
+
+                    stack.push(((PC+1) >> 8) as u8);
+                    stack.push((PC+1) as u8);
+                    SP -= 2;
+
+                    PC = data[[0x0000, 0x0008, 0x0010, 0x0018, 0x0020, 0x0028, 0x0030, 0x0038][selected_jump_vec as usize]] as u16; // note: this is stupid. just do data[8 * selected_jump_vec];
+                    skip_increment = true;
                 },
                 0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => { // undefined opcodes
                     println!("UNDEFINED OPCODE!!");
