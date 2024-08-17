@@ -519,6 +519,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             i = i.overflowing_add(1).0;
             data[0] = i.overflowing_mul(4).0;
             let current_instruction: u8 = data[PC as usize];
+            
 
             #[cfg(feature = "minimal_print")]
             {
@@ -903,11 +904,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let sign = e >> 7;
                     if sign == 1 { value = (value ^ 0xFF).overflowing_add(1).0; } // two's compliment moment
 
-                    let relevant_flag = match current_instruction {
-                        0b00100000 => 1-gimme_flag!(z),
-                        0b00101000 => gimme_flag!(z),
-                        0b00110000 => 1-gimme_flag!(c),
-                        0b00111000 => gimme_flag!(c),
+                    let relevant_flag = match (current_instruction >> 3) & 0b11 {
+                        0b00 => 1-gimme_flag!(z),
+                        0b01 => gimme_flag!(z),
+                        0b10 => 1-gimme_flag!(c),
+                        0b11 => gimme_flag!(c),
                         _ => todo!()
                     };
 
@@ -925,8 +926,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                 0b00001001 | 0b00011001 | 0b00101001 | 0b00111001 => { // 0b00xx1001
                     println!("add with 16bit & store");
-                    println!("NOT IMPLEMENTED!!!");
-                    break;
+
+                    let selected_register = (current_instruction >> 4) & 0b11;
+                    let incr = match selected_register {
+                        0b00 => eval_16bit!(B, C),
+                        0b01 => eval_16bit!(D, E),
+                        0b00 => eval_16bit!(H, L),
+                        0b01 => SP,
+                        _ => todo!()
+                    };
+
+                    let result = eval_16bit!(H, L).overflowing_add(incr);
+                    
+                    lower_flag!(n);
+                    if result.1 { raise_flag!(c); } else { lower_flag!(c); }
+                    if result.0 & 0xF0 != eval_16bit!(H, L) & 0xF0 { raise_flag!(h); } else { lower_flag!(h); }
+
+                    set_16bit!(0b10, result.0 as u8, (result.0 >> 8) as u8)
                 },
                 0x76 => {
                     println!("HALT");
@@ -993,9 +1009,30 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     A = result.0;
                 },
                 0x88..=0x8F => {
-                    println!("ADC");
-                    println!("NOT IMPLEMENTED!!!");
-                    break;
+                    let selected_register = current_instruction & 0b111;
+                    println!("ADC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                    let reg: &mut u8 = &mut match selected_register {
+                        0b000 => B,
+                        0b001 => C,
+                        0b010 => D,
+                        0b011 => E,
+                        0b100 => H,
+                        0b101 => L,
+                        0b110 => data[ eval_16bit!(H, L) as usize],
+                        0b111 => A,
+                        _ => todo!()
+                    };
+
+                    let result = (A).overflowing_add(*reg + gimme_flag!(c));
+
+                    if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                    lower_flag!(n);
+                    if (result.0 & 0xF0) != (A & 0xF0) { raise_flag!(h); } else { lower_flag!(h); }
+                    if result.1 { raise_flag!(c); } else { lower_flag!(c); }
+
+                    A = result.0;
+
                 },
                 0x90..=0x97 => {
                     // used in boot rom; completed
@@ -1114,9 +1151,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // A = result.0 the compare is not actually meant to store the result. it purely compares.
                 },
                 0b11000000 | 0b11001000 | 0b11010000 | 0b11011000 => { // 0b110xx000
-                    println!("ret");
-                    println!("NOT IMPLEMENTED!!!");
-                    break;
+                    println!("COND RET {}", gimme_flag!(z));
+
+                    if gimme_flag!(z) != 1 {
+                        let lsb: u16 = stack.pop().unwrap() as u16;
+                        let msb: u16 = (stack.pop().unwrap() as u16) << 8;
+                        SP += 2;
+
+                        PC = lsb | msb;
+
+                        skip_increment = true; // we just set PC, so we dont want it incremented.
+                    }
                 },
 
                 0b11000001 | 0b11010001 | 0b11100001 | 0b11110001 => { // 0b11xx0001
@@ -1141,11 +1186,57 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     SP += 2;
                 },
 
+                0b11000010 | 0b11001010 | 0b11010010 | 0b11011010 => { // 0b110xx100
+                    println!("conditional call");
+
+                    let lsb = data[(PC+1) as usize] as u16;
+                    let msb = (data[(PC+2) as usize] as u16) << 8;
+                    let addr = lsb | msb;
+
+                    let relevant_flag = match (current_instruction >> 3) & 0b11 {
+                        0b00 => 1-gimme_flag!(z),
+                        0b01 => gimme_flag!(z),
+                        0b10 => 1-gimme_flag!(c),
+                        0b11 => gimme_flag!(c),
+                        _ => todo!()
+                    };
+
+                    if relevant_flag != 0 {
+                        stack.push(((PC+1) >> 8) as u8);
+                        stack.push((PC+1) as u8);
+                        SP -= 2;
+
+                        PC = addr;
+                        skip_increment = true;
+                    }
+                    else { PC += 2; }
+                },
+
                 0b11000010 | 0b11001010 | 0b11010010 | 0b11011010 => { // 0b110xx010
                     println!("conditional jump");
-                    println!("NOT IMPLEMENTED!!!");
-                    break;
-                    PC += 2
+
+                    let lsb = data[(PC+1) as usize] as u16;
+                    let msb = (data[(PC+2) as usize] as u16) << 8;
+                    let addr = lsb | msb;
+
+                    let relevant_flag = match (current_instruction >> 3) & 0b11 {
+                        0b00 => 1-gimme_flag!(z),
+                        0b01 => gimme_flag!(z),
+                        0b10 => 1-gimme_flag!(c),
+                        0b11 => gimme_flag!(c),
+                        _ => todo!()
+                    };
+
+                    if relevant_flag != 0 {
+                        // note: this instruction's code is stollen from conditional call but with this part commented out.
+                        // stack.push(((PC+1) >> 8) as u8);
+                        // stack.push((PC+1) as u8);
+                        // SP -= 2;
+
+                        PC = addr;
+                        skip_increment = true;
+                    }
+                    else { PC += 2; }
                 },
 
                 0b11100000 | 0b11110000 | 0b11100010 | 0b11110010 => { // 0b111x0000 (?)
