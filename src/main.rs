@@ -617,7 +617,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                     // execute sum and deal with overflow
                     let mut result = A.overflowing_add(data[(PC+1) as usize]);
-                    if result.1 { raise_flag!(c); }
+                    if result.1 { raise_flag!(c); } else { lower_flag!(c); }
                     result = result.0.overflowing_add(gimme_flag!(c));
                     if result.1 { raise_flag!(c); }
 
@@ -1062,9 +1062,30 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                 },
                 0x98..=0x9F => {
-                    println!("SBC");
-                    println!("NOT IMPLEMENTED!!!");
-                    break;
+                    let selected_register = current_instruction & 0b111;
+                    println!("SBC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                    let reg: &mut u8 = &mut match selected_register {
+                        0b000 => B,
+                        0b001 => C,
+                        0b010 => D,
+                        0b011 => E,
+                        0b100 => H,
+                        0b101 => L,
+                        0b110 => data[ eval_16bit!(H, L) as usize],
+                        0b111 => A,
+                        _ => todo!()
+                    };
+
+                    let result = (A).overflowing_add( (0xFF ^ *reg).overflowing_add(1).0 ); // two's complement moment
+                    result = result.0.overflowing_add( (gimme_flag!(c) ^ 0xFF).overflowing_add(1).0 ); // subtract carry flag
+                    
+                    if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                    raise_flag!(n);
+                    if (result.0 & 0xF0) != (A & 0xF0) { raise_flag!(h); } else { lower_flag!(h); }
+                    if result.0 >= A { raise_flag!(c); } else { lower_flag!(c); }
+
+                    A = result.0;
                 },
                 0xA0..=0xA7 => {
                     // used in boot rom; completed
@@ -1359,7 +1380,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     println!("UNDEFINED OPCODE!!");
                 },
                 _ => {
-                    // used in boot rom, with 0xED
                     println!("PANIK! UNCONSIDERED INSTRUCTION!!!, {:2X?}", current_instruction);
                 }
             }
