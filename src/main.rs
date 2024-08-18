@@ -795,7 +795,26 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
 
                 0b00001111 => {
-                    println!("ROTATE RIGHT circular");
+                    println!("RRCA");
+
+                    if A & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                    A = (A >> 1) | (A << 7);
+
+                    lower_flag!(z);
+                    lower_flag!(n);
+                    lower_flag!(h);
+                },
+
+                0b00011111 => {
+                    let carry: u8 = gimme_flag!(c);
+                    println!("RRA A:{:2X?} c:{:}", A, carry);
+
+                    if A & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                    A = (A >> 1) | (carry << 7);
+
+                    lower_flag!(z);
+                    lower_flag!(n);
+                    lower_flag!(h);
                 },
                 0b00000111 => {
                     println!("RLCA A:{:2X?}", A);
