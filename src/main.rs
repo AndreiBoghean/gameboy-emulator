@@ -1417,7 +1417,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     if result.1 { raise_flag!(c); } else { lower_flag!(c); }
 
                     A = result.0;
-                    SP += 1;
+                    PC += 1;
                 },
                 0xE6 => {
                     let word = data[(SP+1) as usize];
@@ -1429,18 +1429,18 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     lower_flag!(n);
                     raise_flag!(h);
                     lower_flag!(c);
-                    SP += 1;
+                    PC += 1;
                 },
                 0xF6 => {
                     let word = data[(SP+1) as usize];
                     println!("OR, {:2X?}", word);
 
                     A |= word;
-                    SP += 1;
+                    PC += 1;
                 }
                 0x27 | 55 | 63 | 214 | 217 | 222 | 232 | 233 | 238 | 248 => {
                     println!("UNIMPLEMENTED INSTRUCTION :((");
-                    break;
+                    // break;
                 }
             }
 
