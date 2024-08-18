@@ -1404,6 +1404,43 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => { // undefined opcodes
                     println!("UNDEFINED OPCODE!!");
+                },
+                0xC6 => {
+                    let word = data[(SP+1) as usize];
+                    println!("ADD {:2X?}", word);
+
+                    let result = (A).overflowing_add(word);
+
+                    if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                    lower_flag!(n);
+                    if (result.0 & 0xF0) != (A & 0xF0) { raise_flag!(h); } else { lower_flag!(h); }
+                    if result.1 { raise_flag!(c); } else { lower_flag!(c); }
+
+                    A = result.0;
+                    SP += 1;
+                },
+                0xE6 => {
+                    let word = data[(SP+1) as usize];
+                    println!("AND {:2X?}", word);
+
+                    A &= word;
+
+                    if A == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                    lower_flag!(n);
+                    raise_flag!(h);
+                    lower_flag!(c);
+                    SP += 1;
+                },
+                0xF6 => {
+                    let word = data[(SP+1) as usize];
+                    println!("OR, {:2X?}", word);
+
+                    A |= word;
+                    SP += 1;
+                }
+                0x27 | 55 | 63 | 214 | 217 | 222 | 232 | 233 | 238 | 248 => {
+                    println!("UNIMPLEMENTED INSTRUCTION :((");
+                    break;
                 }
             }
 
