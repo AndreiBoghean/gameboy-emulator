@@ -797,12 +797,21 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b00001111 => {
                     println!("ROTATE RIGHT circular");
                 },
+                0b00000111 => {
+                    println!("RLCA A:{:2X?}", A);
+
+                    if A >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                    A = (A << 1) | (A >> 7);
+
+                    lower_flag!(z);
+                    lower_flag!(n);
+                    lower_flag!(h);
+                },
                 0b00010111 => {
                     // used in boot rom; complete
 
                     let carry: u8 = gimme_flag!(c);
                     println!("RLA A:{:2X?} c:{:}", A, carry);
-
 
                     if A >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                     A = A << 1 | carry;
@@ -1076,7 +1085,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => todo!()
                     };
 
-                    let result = (A).overflowing_add( (0xFF ^ *reg).overflowing_add(1).0 ); // two's complement moment
+                    let mut result = (A).overflowing_add( (0xFF ^ *reg).overflowing_add(1).0 ); // two's complement moment
                     result = result.0.overflowing_add( (gimme_flag!(c) ^ 0xFF).overflowing_add(1).0 ); // subtract carry flag
                     
                     if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
@@ -1376,9 +1385,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => { // undefined opcodes
                     println!("UNDEFINED OPCODE!!");
-                },
-                _ => {
-                    println!("PANIK! UNCONSIDERED INSTRUCTION!!!, {:2X?}", current_instruction);
                 }
             }
 
