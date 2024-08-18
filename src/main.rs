@@ -946,7 +946,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0x76 => {
                     println!("HALT");
-                    println!("NOT IMPLEMENTED!!!");
                     break;
                 },
                 0x40..=0x7F => { // matching anything under 0b01xxxyyy for a load instruction from register yyy to xxx (?)
@@ -1305,8 +1304,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                 0b11111001 => {
                     println!("load SP from HL");
-                    println!("NOT IMPLEMENTED!!!");
-                    break;
+                    SP = eval_16bit!(H, L);
                 },
 
                 0b11111011 => {
