@@ -931,8 +931,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let incr = match selected_register {
                         0b00 => eval_16bit!(B, C),
                         0b01 => eval_16bit!(D, E),
-                        0b00 => eval_16bit!(H, L),
-                        0b01 => SP,
+                        0b10 => eval_16bit!(H, L),
+                        0b11 => SP,
                         _ => todo!()
                     };
 
@@ -1186,7 +1186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     SP += 2;
                 },
 
-                0b11000010 | 0b11001010 | 0b11010010 | 0b11011010 => { // 0b110xx100
+                0b11000100 | 0b11001100 | 0b11010100 | 0b11011100 => { // 0b110xx100
                     println!("conditional call");
 
                     let lsb = data[(PC+1) as usize] as u16;
