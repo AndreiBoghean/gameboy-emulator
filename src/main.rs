@@ -611,25 +611,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // PC += 2
                     skip_increment = true;
                 },
-                0xCE => {
-                    // used in boot rom; completed
-                    println!("ADC literal {:2X?}", data[(PC+1) as usize]);
-
-                    // execute sum and deal with overflow
-                    let mut result = A.overflowing_add(data[(PC+1) as usize]);
-                    if result.1 { raise_flag!(c); } else { lower_flag!(c); }
-                    result = result.0.overflowing_add(gimme_flag!(c));
-                    if result.1 { raise_flag!(c); }
-
-                    // rest of flags
-                    if result.0 == 0 { raise_flag!(z) };
-                    lower_flag!(n);
-                    if A & 0xF0 != result.0 & 0xF0 { raise_flag!(h) };
-
-                    A = result.0;
-                    PC += 1;
-                    // println!("A is now {:2X?} | F is now {:2X?}", A, F);
-                },
                 0b00000001 | 0b00010001 | 0b00100001 | 0b00110001 => { // 0b00xx0001
                     // used in boot rom; completed
                     let selected_register = (current_instruction >> 4) & 0b11;
@@ -1341,23 +1322,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     IME = true;
                 },
 
-                0b11111110 => {
-                    // used in boot rom; completed
-                    let val = data[(PC.overflowing_add(1).0) as usize];
-                    println!("CP n {:2X?}", val);
-
-                    let result = A.overflowing_add((val ^ 0xFF).overflowing_add(1).0); // two's compliment moment
-
-                    if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
-                    raise_flag!(n);
-                    if (result.0 & 0xF0) == (A & 0xF0) { raise_flag!(h); } else { lower_flag!(h); }
-                    if result.0 >= A { raise_flag!(c); } else { lower_flag!(c); }
-
-                    // A = result.0 the compare is not actually meant to store the result. it purely compares.
-
-                    PC += 1
-                },
-
                 0b11001001 => {
                     // used in boot rom; completed
                     println!("unconditional ret");
@@ -1455,7 +1419,66 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0x27 | 55 | 63 | 217 | 222 | 232 | 233 | 238 | 248 => {
                     println!("UNIMPLEMENTED INSTRUCTION :((");
                     // break;
+                },
+
+                0xCE => {
+                    // used in boot rom; completed
+                    println!("ADC literal {:2X?}", data[(PC+1) as usize]);
+
+                    // execute sum and deal with overflow
+                    let mut result = A.overflowing_add(data[(PC+1) as usize]);
+                    if result.1 { raise_flag!(c); } else { lower_flag!(c); }
+                    result = result.0.overflowing_add(gimme_flag!(c));
+                    if result.1 { raise_flag!(c); }
+
+                    // rest of flags
+                    if result.0 == 0 { raise_flag!(z) };
+                    lower_flag!(n);
+                    if A & 0xF0 != result.0 & 0xF0 { raise_flag!(h) };
+
+                    A = result.0;
+                    PC += 1;
+                    // println!("A is now {:2X?} | F is now {:2X?}", A, F);
+                },
+                0xDE => {
+                    let word = data[(SP+1) as usize];
+                    println!("SBC {:2X?}", word);
+
+                    let mut result = (A).overflowing_add( (0xFF ^ word).overflowing_add(1).0 ); // two's complement moment
+                    result = result.0.overflowing_add( (gimme_flag!(c) ^ 0xFF).overflowing_add(1).0 ); // subtract carry flag
+                    
+                    if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                    raise_flag!(n);
+                    if (result.0 & 0xF0) != (A & 0xF0) { raise_flag!(h); } else { lower_flag!(h); }
+                    if result.0 >= A { raise_flag!(c); } else { lower_flag!(c); }
+
+                    A = result.0;
+                    PC += 1;
+                },
+                0xEE => {
+                    let word = data[(SP+1) as usize];
+                    println!("XOR, {:2X?}", word);
+
+                    A ^= word;
+                    PC += 1;
+                },
+                0xFE => {
+                    // used in boot rom; completed
+                    let val = data[(PC.overflowing_add(1).0) as usize];
+                    println!("CP n {:2X?}", val);
+
+                    let result = A.overflowing_add((val ^ 0xFF).overflowing_add(1).0); // two's compliment moment
+
+                    if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                    raise_flag!(n);
+                    if (result.0 & 0xF0) == (A & 0xF0) { raise_flag!(h); } else { lower_flag!(h); }
+                    if result.0 >= A { raise_flag!(c); } else { lower_flag!(c); }
+
+                    // A = result.0 the compare is not actually meant to store the result. it purely compares.
+
+                    PC += 1
                 }
+
             }
 
             if !skip_increment { PC += 1; }
