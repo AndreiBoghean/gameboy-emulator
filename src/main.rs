@@ -589,6 +589,28 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                                             // what I do. (I'm ignoring flags as hard as possible until
                                             // they become a problem)
                         },
+                        0b0000000..=0b00000111 => {
+                            println!("RLC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                            if *reg >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                            *reg = (*reg << 1) | (*reg >> 7);
+
+                            if *reg == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                            lower_flag!(n);
+                            lower_flag!(h);
+                            lower_flag!(c);
+                        },
+                        0b0001000..=0b00001111 => {
+                            println!("RRC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                            if *reg & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                            *reg = (*reg >> 1) | (*reg << 7);
+
+                            if *reg == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                            lower_flag!(n);
+                            lower_flag!(h);
+                            lower_flag!(c);
+                        },
                         0b00111000..=0b00111111 => {
                             println!("SRL {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
@@ -605,6 +627,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                             if *reg & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             *reg = (*reg >> 1) | (carry << 7);
+
+                            lower_flag!(z);
+                            lower_flag!(n);
+                            lower_flag!(h);
+                        },
+                        0b00101000..=0b00101111 => {
+                            println!("SRA {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                            if *reg & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                            *reg = *reg >> 1;
 
                             lower_flag!(z);
                             lower_flag!(n);
