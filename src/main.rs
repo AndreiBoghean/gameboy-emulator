@@ -589,7 +589,48 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                                             // what I do. (I'm ignoring flags as hard as possible until
                                             // they become a problem)
                         },
-                        _ => { println!("panik! {:2X?}", selected_register); }
+                        0b00111000..=0b00111111 => {
+                            println!("SRL {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                            if A & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                            A = A >> 1;
+
+                            if A == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                            lower_flag!(n);
+                            lower_flag!(h);
+                        },
+                        0b00011000..=0b00011111 => {
+                            let carry: u8 = gimme_flag!(c);
+                            println!("RR {:}:{:}:{:2X?} c:{:}", selected_register, repr_8bit!(selected_register), *reg, carry);
+
+                            if *reg & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                            *reg = (*reg >> 1) | (carry << 7);
+
+                            lower_flag!(z);
+                            lower_flag!(n);
+                            lower_flag!(h);
+                        },
+                        0b00100000..=0b00100111 => {
+                            println!("SLA {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                            if *reg >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
+                            *reg = *reg << 1;
+
+                            lower_flag!(z);
+                            lower_flag!(n);
+                            lower_flag!(h);
+                        },
+                        0b00110000..=0b00110111 => {
+                            println!("SWAP {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+
+                            *reg = (*reg >> 4) | (*reg << 4);
+                            if *reg == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                            lower_flag!(n);
+                            lower_flag!(h);
+                            lower_flag!(c);
+                        },
+
+                        _ => { println!("panik! {:2X?}", prefix_instruction); break; }
                     }
 
                     PC += 1
@@ -1032,7 +1073,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => todo!()
                     };
 
-                    let result = (A).overflowing_add(*reg + gimme_flag!(c));
+                    let result = (A).overflowing_add( (*reg).overflowing_add(gimme_flag!(c)).0 );
 
                     if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
                     lower_flag!(n);
@@ -1416,7 +1457,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     A |= word;
                     PC += 1;
                 }
-                0x27 | 55 | 63 | 217 | 222 | 232 | 233 | 238 | 248 => {
+                0x27 | 55 | 63 | 217 | 232 | 233 | 248 => {
                     println!("UNIMPLEMENTED INSTRUCTION :((");
                     // break;
                 },
@@ -1506,7 +1547,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
 
         println!("IME: {}", IME);
-        fs::write("memDump.bin", data);
+        let _ = fs::write("memDump.bin", data);
     });
 
     let event_loop = EventLoop::new().unwrap();
