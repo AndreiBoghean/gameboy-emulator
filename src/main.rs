@@ -1419,6 +1419,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     A = result.0;
                     PC += 1;
                 },
+                0xD6 => {
+                    let word = data[(SP+1) as usize];
+                    println!("SUB {:2X?}", word);
+
+                    let result = (A).overflowing_add( (0xFF ^ word).overflowing_add(1).0 ); // two's complement moment
+
+                    if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
+                    raise_flag!(n);
+                    if (result.0 & 0xF0) != (A & 0xF0) { raise_flag!(h); } else { lower_flag!(h); }
+                    if result.0 >= A { raise_flag!(c); } else { lower_flag!(c); }
+
+                    A = result.0;
+                    PC += 1;
+                },
                 0xE6 => {
                     let word = data[(SP+1) as usize];
                     println!("AND {:2X?}", word);
@@ -1438,7 +1452,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     A |= word;
                     PC += 1;
                 }
-                0x27 | 55 | 63 | 214 | 217 | 222 | 232 | 233 | 238 | 248 => {
+                0x27 | 55 | 63 | 217 | 222 | 232 | 233 | 238 | 248 => {
                     println!("UNIMPLEMENTED INSTRUCTION :((");
                     // break;
                 }
@@ -1469,6 +1483,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
 
         println!("IME: {}", IME);
+        fs::write("memDump.bin", data);
     });
 
     let event_loop = EventLoop::new().unwrap();
