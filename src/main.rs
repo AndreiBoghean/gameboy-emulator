@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use std::sync::{Arc, Mutex};
+use std::io::{stdin, Read};
 
 extern crate winit;
 use winit::{
@@ -63,7 +64,7 @@ impl ApplicationHandler for App {
 
         // wait for the program to stabilise
         // thread::sleep(Duration::from_millis(5000));
-        let data = self.data.lock().unwrap();
+        let mut data = self.data.lock().unwrap();
 
         // println!("tilemap:\n{:2X?}", &data[0x9800..0x9C00]);
         // println!("tilemap:\n{:2X?}", &data[0x8000..0x8200]);
@@ -125,6 +126,9 @@ impl ApplicationHandler for App {
         // let start_y: u32 = data[0xFF42] as u32;
         let start_x: i32 = data[0xFF43] as i32;
         let start_y: i32 = data[0xFF42] as i32;
+
+        // we're currently rendering a frame, i.e. we're not in vblank, so make sure vblank interrupt doesnt trigger by turning off the relevant flag.
+        data[0xFF0F] &= 0b11111110;
 
         // drop data, thus releasing the mutex on it.
         drop(data);
@@ -195,6 +199,11 @@ impl ApplicationHandler for App {
                 real_frame[(i*4+3) as usize] = frame[(frame_i*4+3) as usize];
             }
         }
+
+        let mut data = self.data.lock().unwrap();
+        // we're done rendering all rows, i.e. we're in vblank, so make sure vblank interrupt can trigger by turning on the relevant flag.
+        data[0xFF0F] |= 0b00000001;
+        drop(data);
 
         /*
         for i in 0..frame.len() {
@@ -300,6 +309,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let mut PC: u16 = 0;
 
         let mut IME: bool = false;
+        let mut delay_IME: bool = false;
+        let mut unmapped: bool = false;
 
         // begin defining a whole lotta hardware registers (note: description | readable/writable | gb models)
         // btw we dont actually need these YET
@@ -516,19 +527,32 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let mut skip_increment = false;
         loop {
             let mut data = data_wanter.lock().unwrap();
+
             i = i.overflowing_add(1).0;
             data[0] = i.overflowing_mul(4).0;
+
+
             let current_instruction: u8 = data[PC as usize];
             
+            #[cfg(feature = "watch_mem_changes")]
+            let original_data = data.clone();
 
             #[cfg(feature = "minimal_print")]
             {
                 print!("PC: {:2X?} | IR:{:4X?} - ", PC, current_instruction);
+                
+                // print!("0040:{:X?} 0048:{:X?} 0050:{:X?} 0058:{:X?} 0060:{:X?} | PC: {:2X?} | IR:{:4X?} - ", data[0x0040], data[0x0048], data[0x0050], data[0x0058], data[0x0060], PC, current_instruction);
+                // print!("0040:{:X?} FF0F:{:X?} FFFF:{:X?} | IME:{} | PC: {:2X?} | IR:{:4X?} - ", data[0x0040], data[0xFF0F], data[0xFFFF], IME, PC, current_instruction);
             }
-            #[cfg(not(feature = "minimal_print"))]
+            #[cfg(feature = "print_interrupt")]
             {
-                print!("S: {:2X?} A:{:2X?} F:{:2X?} B:{:2X?} C:{:2X?} D:{:2X?} E:{:2X?} H:{:2X?} L:{:2X?} | SP:{:4X?}, HL:{:4X?} | ZNHC____:{:8} | sX:{:3} sY:{:3} || PC: {:4X?} | IR:{:4X?} - ",
-                    &stack[stack.len()-5..], A, F, B, C, D, E, H, L, SP, eval_16bit!(H, L), format!("{F:b}"), data[0xFF43], data[0xFF42], PC, current_instruction);
+                print!("0040:{:X?} FF0F:{:X?} FFFF:{:X?} | IME:{} | PC: {:2X?} | IR:{:4X?} - ", data[0x0040], data[0xFF0F], data[0xFFFF], IME, PC, current_instruction);
+            }
+            #[cfg(not(any(feature = "minimal_print", feature = "print_interrupt")))]
+            {
+                let IF = data[0xFF0F];
+                print!("S: {:2X?} A:{:2X?} F:{:2X?} B:{:2X?} C:{:2X?} D:{:2X?} E:{:2X?} H:{:2X?} L:{:2X?} | SP:{:4X?}, HL:{:4X?} | ZNHC____:{:>8} ___JSTLV:{:>8} | IME:{} | sX:{:3} sY:{:3} || PC: {:4X?} | IR:{:4X?} - ",
+                    &stack[stack.len()-5..], A, F, B, C, D, E, H, L, SP, eval_16bit!(H, L), format!("{F:b}"), format!("{IF:b}"), IME, data[0xFF43], data[0xFF42], PC, current_instruction);
             }
 
 
@@ -1252,19 +1276,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                     // A = result.0 the compare is not actually meant to store the result. it purely compares.
                 },
-                0b11000000 | 0b11001000 | 0b11010000 | 0b11011000 => { // 0b110xx000
-                    println!("COND RET {}", gimme_flag!(z));
-
-                    if gimme_flag!(z) != 1 {
-                        let lsb: u16 = stack.pop().unwrap() as u16;
-                        let msb: u16 = (stack.pop().unwrap() as u16) << 8;
-                        SP += 2;
-
-                        PC = lsb | msb;
-
-                        skip_increment = true; // we just set PC, so we dont want it incremented.
-                    }
-                },
 
                 0b11000001 | 0b11010001 | 0b11100001 | 0b11110001 => { // 0b11xx0001
                     // used in boot rom; completed
@@ -1392,9 +1403,22 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b11111011 => {
                     // used in boot rom; completed(?)
                     println!("schedule to enable interrupts after next cycle");
-                    IME = true;
+                    delay_IME = true;
                 },
 
+                0b11000000 | 0b11001000 | 0b11010000 | 0b11011000 => { // 0b110xx000
+                    println!("COND RET {}", gimme_flag!(z));
+
+                    if gimme_flag!(z) != 1 {
+                        let lsb: u16 = stack.pop().unwrap() as u16;
+                        let msb: u16 = (stack.pop().unwrap() as u16) << 8;
+                        SP += 2;
+
+                        PC = lsb | msb;
+
+                        skip_increment = true; // we just set PC, so we dont want it incremented.
+                    }
+                },
                 0b11001001 => {
                     // used in boot rom; completed
                     println!("unconditional ret");
@@ -1406,6 +1430,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     PC = lsb | msb;
 
                     skip_increment = true; // we just set PC, so we dont want it incremented.
+                },
+                0b11011001 => {
+                    // used in boot rom; completed
+                    println!("reti");
+
+                    let lsb: u16 = stack.pop().unwrap() as u16;
+                    let msb: u16 = (stack.pop().unwrap() as u16) << 8;
+                    SP += 2;
+
+                    PC = lsb | msb;
+
+                    skip_increment = true; // we just set PC, so we dont want it incremented.
+                    IME = true;
+                    unmapped = false;
                 },
                 0b11000101 | 0b11010101 | 0b11100101 | 0b11110101 => { // 0b11xx0101
                     // used in boot rom; completed
@@ -1489,7 +1527,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     A |= word;
                     PC += 1;
                 }
-                0x27 | 55 | 63 | 217 | 232 | 233 | 248 => {
+                0x27 | 55 | 63 | 232 | 233 | 248 => {
                     println!("UNIMPLEMENTED INSTRUCTION :((");
                     // break;
                 },
@@ -1553,9 +1591,62 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 }
 
             }
-
+            
             if !skip_increment { PC += 1; }
             else { skip_increment = false; }
+
+            // interrupt handler
+
+            if IME && (data[0xFF0F] & data[0xFFFF]) != 0
+            {
+                stack.push(((PC) >> 8) as u8);
+                stack.push((PC) as u8);
+                SP -= 2;
+
+                if (data[0xFF0F] & data[0xFFFF]) >> 0 == 1 // VBLANK
+                {
+                    PC = data[0x40] as u16;
+                    print!("VBLANK");
+                }
+                else if (data[0xFF0F] & data[0xFFFF]) >> 1 == 1 // LCD
+                {
+                    PC = data[0x48] as u16;
+                    print!("LCD");
+                }
+                else if (data[0xFF0F] & data[0xFFFF]) >> 2 == 1 // timer
+                {
+                    PC = data[0x50] as u16;
+                    print!("timer");
+                }
+                else if (data[0xFF0F] & data[0xFFFF]) >> 3 == 1 // serial
+                {
+                    PC = data[0x58] as u16;
+                    print!("cereal");
+                }
+                else if (data[0xFF0F] & data[0xFFFF]) >> 4 == 1 // joypad
+                {
+                    PC = data[0x60] as u16;
+                    print!("joypad");
+                }
+
+                println!(" INTERRUPT CALLED!!");
+                unmapped = true;
+                IME = false;
+            }
+            
+            if delay_IME && current_instruction != 0b11111011
+            {
+                delay_IME = false;
+                IME = true;
+            }
+
+            #[cfg(feature = "watch_mem_changes")]
+            {
+                for i in 0..data.len() {
+                    if data[i] != original_data[i]
+                        { println!("unoriginal data!! at {:4X?}/{:4X?}", i, data.len()); return; } }
+                drop(original_data);
+            }
 
             if data[0xFF50] != 0
             {
@@ -1570,15 +1661,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             // break when boot rom logo finishes scrolling
             // if data[0xFF42] == 3 { break; }
             
-            if PC == 0x9999 { break; }
+            if PC == 0x9999 { drop(data); break; }
             // if PC >= 0x100 { PC = 0; }
 
+            if unmapped { stdin().read(&mut [0]).unwrap(); }
+            unmapped = false;
             drop(data);
             thread::sleep(Duration::from_millis( 1000 * 1/4194304 ));
             // thread::sleep(Duration::from_millis(100));
         }
 
-        println!("IME: {}", IME);
         let _ = fs::write("memDump.bin", data);
     });
 
