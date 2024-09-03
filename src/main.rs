@@ -577,7 +577,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             }
             #[cfg(feature = "print_interrupt")]
             {
-                print!("0040:{:X?} FF0F:{:X?} FFFF:{:X?} | IME:{} | PC: {:2X?} | IR:{:4X?} - ", data[0x0040], data[0xFF0F], data[0xFFFF], IME, PC, current_instruction);
+                print!("0040:{:X?} FF02:{:X?} FF0F:{:X?} FFFF:{:X?} | IME:{} | PC: {:2X?} | IR:{:4X?} - ", data[0x0040], data[0xFF02], data[0xFF0F], data[0xFFFF], IME, PC, current_instruction);
             }
             #[cfg(not(any(feature = "minimal_print", feature = "print_interrupt")))]
             {
@@ -1478,6 +1478,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             
             if !skip_increment { PC += 1; }
             else { skip_increment = false; }
+
+            // serial handler
+            if data[0xFF02] >> 7 == 1
+            {
+                // for now, just pretend to be disconnected.
+                data[0xFF02] &= 0b01111111;
+                data[0xFF01] = 0xFF; // when disconnected, the serial link just reads in 1s.
+
+                data[0xFF0F] |= 0b00001000; // also, enable flag for serial transfer completed.
+            }
 
             // interrupt handler
 
