@@ -500,6 +500,37 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             (c) => (F &= 0b11101111);
         }
 
+        macro_rules! mut_8bit_reg {
+            ($reg:expr) => {
+                match $reg {
+                    0b000 => &mut B,
+                    0b001 => &mut C,
+                    0b010 => &mut D,
+                    0b011 => &mut E,
+                    0b100 => &mut H,
+                    0b101 => &mut L,
+                    0b110 => &mut data[ eval_16bit!(H, L) as usize],
+                    0b111 => &mut A,
+                    _ => todo!()
+                }
+            }
+        }
+
+        macro_rules! reg_8bit {
+            ($reg:expr) => {
+                match $reg {
+                    0b000 => B,
+                    0b001 => C,
+                    0b010 => D,
+                    0b011 => E,
+                    0b100 => H,
+                    0b101 => L,
+                    0b110 => data[ eval_16bit!(H, L) as usize],
+                    0b111 => A,
+                    _ => todo!()
+                }
+            }
+        }
 
         // this thing creates a u16 var "AF_", and 2 u8 pointers "A_" and "F_" which point to the Hi
         // and Lo sections of the u16 thing, respectively. for now, other solutions are being seeked
@@ -576,17 +607,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = prefix_instruction & 0b111;
                     print!("PREFIX INSTRUCTION LUL {:2X?} | ", prefix_instruction);
 
-                    let reg: &mut u8 = match selected_register {
-                        0b000 => &mut B,
-                        0b001 => &mut C,
-                        0b010 => &mut D,
-                        0b011 => &mut E,
-                        0b100 => &mut H,
-                        0b101 => &mut L,
-                        0b110 => &mut data[ eval_16bit!(H, L) as usize],
-                        0b111 => &mut A,
-                        _ => todo!()
-                    };
+                    let reg: &mut u8 = mut_8bit_reg!(selected_register);
 
                     match prefix_instruction
                     {
@@ -777,18 +798,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         }
                     }
 
-                    match selected_register
-                    {
-                        0b000 => increment!(B),
-                        0b001 => increment!(C),
-                        0b010 => increment!(D),
-                        0b011 => increment!(E),
-                        0b100 => increment!(H),
-                        0b101 => increment!(L),
-                        0b110 => increment!(data[ eval_16bit!(H, L) as usize]),
-                        0b111 => increment!(A),
-                        _ => println!("panik!")
-                    }
+                    let reg: &mut u8 = mut_8bit_reg!(selected_register);
+                    increment!(*reg);
                 },
 
                 0b00001011 | 0b00011011 | 0b00101011 | 0b00111011 => { // 0b00xx1011
@@ -836,18 +847,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         }
                     }
 
-                    match selected_register
-                    {
-                        0b000 => decrement!(B),
-                        0b001 => decrement!(C),
-                        0b010 => decrement!(D),
-                        0b011 => decrement!(E),
-                        0b100 => decrement!(H),
-                        0b101 => decrement!(L),
-                        0b110 => decrement!(data[ eval_16bit!(H, L) as usize]),
-                        0b111 => decrement!(A),
-                        _ => println!("panik!")
-                    }
+                    let reg: &mut u8 = mut_8bit_reg!(selected_register);
+                    decrement!(*reg);
                 },
 
                 0b00000110 | 0b00001110 | 0b00010110 | 0b00011110 | 0b00100110 | 0b00101110 | 0b00110110 | 0b00111110 => { // 0b00xxx110
@@ -856,18 +857,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let value = data[(PC+1) as usize];
                     println!("LD n {:2X?}:{:} {:2X?}", selected_register, repr_8bit!(selected_register), value);
 
-                    match selected_register
-                    {
-                        0b000 => B = value,
-                        0b001 => C = value,
-                        0b010 => D = value,
-                        0b011 => E = value,
-                        0b100 => H = value,
-                        0b101 => L = value,
-                        0b110 => data[eval_16bit!(H, L) as usize] = value,
-                        0b111 => A = value,
-                        _ => { println!("panik!"); }
-                    }
+                    let reg: &mut u8 = mut_8bit_reg!(selected_register);
+                    *reg = value;
 
                     PC += 1
                 },
@@ -1060,51 +1051,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register_B = (current_instruction) & 0b111;
                     println!("load {:2X?}:{:} {:2X?}:{:}", selected_register_A, repr_8bit!(selected_register_A), selected_register_B, repr_8bit!(selected_register_B));
 
-                    let reg2 = match selected_register_B {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
-                        _ => todo!()
-                    };
-
-                    let reg1: &mut u8 = match selected_register_A {
-                        0b000 => &mut B,
-                        0b001 => &mut C,
-                        0b010 => &mut D,
-                        0b011 => &mut E,
-                        0b100 => &mut H,
-                        0b101 => &mut L,
-                        0b110 => &mut data[ eval_16bit!(H, L) as usize],
-                        0b111 => &mut A,
-                        _ => todo!()
-                    };
-                    // println!("reg1:{:2X?} reg2:{:2X?}", *reg1, reg2);
+                    let reg2: u8 = reg_8bit!(selected_register_B);
+                    let reg1: &mut u8 = mut_8bit_reg!(selected_register_A);
                     *reg1 = reg2;
-                    // println!("reg1:{:2X?} reg2:{:2X?}", *reg1, reg2);
                 },
                 0x80..=0x87 => {
                     // used in boot rom; complete
                     let selected_register = current_instruction & 0b111;
                     println!("ADD {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    let reg: &mut u8 = &mut match selected_register {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
-                        _ => todo!()
-                    };
-
-                    let result = (A).overflowing_add(*reg);
+                    let reg: u8 = reg_8bit!(selected_register);
+                    let result = (A).overflowing_add(reg);
 
                     if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
                     lower_flag!(n);
@@ -1117,19 +1074,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = current_instruction & 0b111;
                     println!("ADC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    let reg: &mut u8 = &mut match selected_register {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
-                        _ => todo!()
-                    };
+                    let reg: u8 = reg_8bit!(selected_register);
 
-                    let result = (A).overflowing_add( (*reg).overflowing_add(gimme_flag!(c)).0 );
+                    let result = (A).overflowing_add( (reg).overflowing_add(gimme_flag!(c)).0 );
 
                     if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
                     lower_flag!(n);
@@ -1144,19 +1091,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = current_instruction & 0b111;
                     println!("SUB {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    let reg: &mut u8 = &mut match selected_register {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
-                        _ => todo!()
-                    };
+                    let reg: u8 = reg_8bit!(selected_register);
 
-                    let result = (A).overflowing_add( (0xFF ^ *reg).overflowing_add(1).0 ); // two's complement moment
+                    let result = (A).overflowing_add( (0xFF ^ reg).overflowing_add(1).0 ); // two's complement moment
 
                     if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
                     raise_flag!(n);
@@ -1170,19 +1107,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = current_instruction & 0b111;
                     println!("SBC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    let reg: &mut u8 = &mut match selected_register {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
-                        _ => todo!()
-                    };
+                    let reg: u8 = reg_8bit!(selected_register);
 
-                    let mut result = (A).overflowing_add( (0xFF ^ *reg).overflowing_add(1).0 ); // two's complement moment
+                    let mut result = (A).overflowing_add( (0xFF ^ reg).overflowing_add(1).0 ); // two's complement moment
                     result = result.0.overflowing_add( (gimme_flag!(c) ^ 0xFF).overflowing_add(1).0 ); // subtract carry flag
                     
                     if result.0 == 0 { raise_flag!(z); } else { lower_flag!(z); }
@@ -1197,18 +1124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = current_instruction & 0b111;
                     println!("AND {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    match selected_register
-                    {
-                        0b000 => A &= B,
-                        0b001 => A &= C,
-                        0b010 => A &= D,
-                        0b011 => A &= E,
-                        0b100 => A &= H,
-                        0b101 => A &= L,
-                        0b110 => A &= data[eval_16bit!(H, L) as usize],
-                        0b111 => A &= A,
-                        _ => { println!("panik! {:2X?}", selected_register); }
-                    }
+                    A &= reg_8bit!(selected_register);
 
                     if A == 0 { raise_flag!(z); } else { lower_flag!(z); }
                     lower_flag!(n);
@@ -1220,52 +1136,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = current_instruction & 0b111;
                     println!("XOR, {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    match selected_register
-                    {
-                        0b000 => A ^= B,
-                        0b001 => A ^= C,
-                        0b010 => A ^= D,
-                        0b011 => A ^= E,
-                        0b100 => A ^= H,
-                        0b101 => A ^= L,
-                        0b110 => A ^= data[eval_16bit!(H, L) as usize],
-                        0b111 => A ^= A,
-                        _ => { println!("panik!"); }
-                    }
+                    A ^= reg_8bit!(selected_register);
                 },
                 0xB0..=0xB7 => {
                     let selected_register = current_instruction & 0b111;
                     println!("OR, {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    match selected_register
-                    {
-                        0b000 => A |= B,
-                        0b001 => A |= C,
-                        0b010 => A |= D,
-                        0b011 => A |= E,
-                        0b100 => A |= H,
-                        0b101 => A |= L,
-                        0b110 => A |= data[eval_16bit!(H, L) as usize],
-                        0b111 => A |= A,
-                        _ => { println!("panik!"); }
-                    }
+                    A |= reg_8bit!(selected_register);
                 },
                 0xB8..=0xBF => {
                     // used in boot rom; completed
                     let selected_register = current_instruction & 0b111;
                     println!("CP {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
-                    let reg: u8 = match selected_register {
-                        0b000 => B,
-                        0b001 => C,
-                        0b010 => D,
-                        0b011 => E,
-                        0b100 => H,
-                        0b101 => L,
-                        0b110 => data[ eval_16bit!(H, L) as usize],
-                        0b111 => A,
-                        _ => todo!()
-                    };
+                    let reg: u8 = reg_8bit!(selected_register);
                     
                     let result = A.overflowing_add((reg ^ 0xFF).overflowing_add(1).0); // two's compliment moment
 
@@ -1630,7 +1514,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 }
 
                 println!(" INTERRUPT CALLED!!");
-                unmapped = true;
+                // unmapped = true;
                 IME = false;
             }
             
