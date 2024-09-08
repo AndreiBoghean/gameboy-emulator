@@ -72,7 +72,10 @@ impl ApplicationHandler for App {
         // thread::sleep(Duration::from_millis(100000000));
 
         let tilemap = &data[0x9800..0x9C00];
-        let tiledata = &data[0x8000..0x8800];
+        let tiledata_start: usize = (0x8800 - (0x800 * ((data[0xFF40] as u16 >> 4) & 0b1))) as usize;
+        // println!("td:{:X?}", tiledata_start);
+        // thread::sleep(Duration::from_millis( 200 ));
+        let tiledata = &data[tiledata_start..tiledata_start+0x1000];
         // println!("tiledata: {:2X?}", tiledata);
 
         let mut frame: Vec<u8> = Vec::new();
@@ -258,8 +261,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // let mut data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
     
     let mut data: Vec<u8> = fs::read("roms/Tetris.gb")?;
-    let boot_data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
-    for i in 0..0x100 { data[i] = boot_data[i]; }
+
+    #[cfg(not(feature = "decompile_rom"))]
+    {
+        let boot_data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
+        for i in 0..0x100 { data[i] = boot_data[i]; }
+    }
     
     data.resize(0xFFFF+1, 0);
     let gimme_data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(data.clone()));
@@ -556,19 +563,28 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         // renderer thread, a.k.a the PPU.
 
         let mut skip_increment = false;
+
+        #[cfg(feature = "decompile_rom")]
+        let mut last_PC = 0;
+
         loop {
             let mut data = data_wanter.lock().unwrap();
 
             i = i.overflowing_add(1).0;
             data[0] = i.overflowing_mul(4).0;
 
+            #[cfg(feature = "decompile_rom")]
+            {
+                PC = last_PC+1;
+                last_PC = PC;
+            }
 
             let current_instruction: u8 = data[PC as usize];
             
             #[cfg(feature = "watch_mem_changes")]
             let original_data = data.clone();
 
-            #[cfg(feature = "minimal_print")]
+            #[cfg(any(feature = "minimal_print", feature="decompile_rom"))]
             {
                 print!("PC: {:2X?} | IR:{:4X?} - ", PC, current_instruction);
                 
@@ -579,11 +595,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             {
                 print!("0040:{:X?} FF02:{:X?} FF0F:{:X?} FFFF:{:X?} | IME:{} | PC: {:2X?} | IR:{:4X?} - ", data[0x0040], data[0xFF02], data[0xFF0F], data[0xFFFF], IME, PC, current_instruction);
             }
-            #[cfg(not(any(feature = "minimal_print", feature = "print_interrupt")))]
+            #[cfg(feature = "print_video")]
+            {
+                print!("FF40:{:X?} | PC: {:2X?} | IR:{:4X?} - ", data[0xFF40], PC, current_instruction);
+            }
+            #[cfg(not(any(feature = "minimal_print", feature = "print_interrupt", feature = "print_video", feature = "decompile_rom")))]
             {
                 let IF = data[0xFF0F];
-                print!("S: {:2X?} A:{:2X?} F:{:2X?} B:{:2X?} C:{:2X?} D:{:2X?} E:{:2X?} H:{:2X?} L:{:2X?} | SP:{:4X?}, HL:{:4X?} | ZNHC____:{:>8} ___JSTLV:{:>8} | IME:{} | sX:{:3} sY:{:3} || PC: {:4X?} | IR:{:4X?} - ",
-                    &stack[stack.len()-5..], A, F, B, C, D, E, H, L, SP, eval_16bit!(H, L), format!("{F:b}"), format!("{IF:b}"), IME, data[0xFF43], data[0xFF42], PC, current_instruction);
+                print!("S: {:2X?} A:{:2X?} F:{:2X?} B:{:2X?} C:{:2X?} D:{:2X?} E:{:2X?} H:{:2X?} L:{:2X?} | SP:{:4X?}, BC:{:4X?}, DE:{:4X?}, HL:{:4X?} | ZNHC____:{:>8} ___JSTLV:{:>8} | IME:{} | sX:{:3} sY:{:3} || PC: {:4X?} | IR:{:4X?} - ",
+                    &stack[stack.len()-5..], A, F, B, C, D, E, H, L, SP, eval_16bit!(B, C), eval_16bit!(D, E), eval_16bit!(H, L), format!("{F:b}"), format!("{IF:b}"), IME, data[0xFF43], data[0xFF42], PC, current_instruction);
             }
 
 
@@ -1236,7 +1256,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     else { PC += 2; }
                 },
 
-                0b11100000 | 0b11110000 | 0b11100010 | 0b11110010 => { // 0b111x0000 (?)
+                0b11100000 | 0b11110000 | 0b11100010 | 0b11110010 => { // 0b111x00x0 (?)
                     // used in boot rom; completed
                     // if 4th bit = 1: instruction is loading to A. else: instruction is loading to mem loc.
                     // if 2nd last bit = 1: insturction shall implicitly use C reg instead of following word.
@@ -1500,26 +1520,31 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 if (data[0xFF0F] & data[0xFFFF]) >> 0 == 1 // VBLANK
                 {
                     PC = data[0x40] as u16;
+                    data[0xFF0F] &= 0b11111110;
                     print!("VBLANK");
                 }
                 else if (data[0xFF0F] & data[0xFFFF]) >> 1 == 1 // LCD
                 {
                     PC = data[0x48] as u16;
+                    data[0xFF0F] &= 0b11111101;
                     print!("LCD");
                 }
                 else if (data[0xFF0F] & data[0xFFFF]) >> 2 == 1 // timer
                 {
                     PC = data[0x50] as u16;
+                    data[0xFF0F] &= 0b11111011;
                     print!("timer");
                 }
                 else if (data[0xFF0F] & data[0xFFFF]) >> 3 == 1 // serial
                 {
                     PC = data[0x58] as u16;
+                    data[0xFF0F] &= 0b11110111;
                     print!("cereal");
                 }
                 else if (data[0xFF0F] & data[0xFFFF]) >> 4 == 1 // joypad
                 {
                     PC = data[0x60] as u16;
+                    data[0xFF0F] &= 0b11101111;
                     print!("joypad");
                 }
 
