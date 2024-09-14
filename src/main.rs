@@ -261,6 +261,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     // let mut data: Vec<u8> = fs::read("roms/dmg_boot.bin")?;
     
     let mut data: Vec<u8> = fs::read("roms/Tetris.gb")?;
+    // let mut data: Vec<u8> = fs::read("roms/Tamagotchi.gb")?;
+    // let mut data: Vec<u8> = fs::read("roms/qbert.gb")?;
+    // let mut data: Vec<u8> = fs::read("roms/asteroids.gb")?;
 
     #[cfg(not(feature = "decompile_rom"))]
     {
@@ -292,10 +295,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             thread::sleep(Duration::from_millis(1000));
         }
         */
-        let mut i: u8 = 0;
-
-
-
 
         // note: gameboi instructions use both "AF" and individual "A" and "F" registers. since there
         // are more 8bit registers than 16bit, I decided to define the 8bit ones and combine to form
@@ -411,7 +410,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         // println!("setting SP.");
                         SP = (($value_msb as u16) << 8 | $value_lsb as u16);
                     }
-                    _ => { println!("panik!"); }
+                    _ => { println!("panik!"); break; }
                 }
             };
         }
@@ -564,19 +563,22 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
         let mut skip_increment = false;
 
-        #[cfg(feature = "decompile_rom")]
         let mut last_PC = 0;
+        let mut recent_execs: Vec<u16> = Vec::new();
+
+        let mut serial_progress = 0;
 
         loop {
             let mut data = data_wanter.lock().unwrap();
 
-            i = i.overflowing_add(1).0;
-            data[0] = i.overflowing_mul(4).0;
+            // i = i.overflowing_add(1).0;
+            // data[0] = i.overflowing_mul(4).0;
+
+            last_PC = PC;
 
             #[cfg(feature = "decompile_rom")]
             {
                 PC = last_PC+1;
-                last_PC = PC;
             }
 
             let current_instruction: u8 = data[PC as usize];
@@ -610,16 +612,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             match current_instruction {
                 0x00 => {
                     // used in boot rom; completed
-                    println!("NOP");
+                    print!("NOP");
                 },
                 0x10 => {
-                    println!("STOP");
+                    print!("STOP");
                 },
                 0x08 => {
-                    println!("load from SP");
+                    print!("load from SP");
                 },
                 0xF3 => {
-                    println!("DISABLE INTERRUPTS");
+                    print!("DISABLE INTERRUPTS");
                 },
                 0xCB => {
                     // used in boot rom; completed
@@ -633,7 +635,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     {
                         0b00010000..=0b00010111 => {
                             let carry: u8 = gimme_flag!(c);
-                            println!("ROTATE LEFT {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                            print!("ROTATE LEFT {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                             if *reg >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             *reg = *reg << 1 | carry;
@@ -646,7 +648,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         0x40..=0x7F => {
                             let selected_bit = (prefix_instruction >> 3) & 0b111;
                             let bit = ((*reg) >> selected_bit) & 0b1;
-                            println!("TEST BIT {:2X?}:{:} {:2X?} (bit val is {:2X?})", selected_register, repr_8bit!(selected_register), selected_bit, bit);
+                            print!("TEST BIT {:2X?}:{:} {:2X?} (bit val is {:2X?})", selected_register, repr_8bit!(selected_register), selected_bit, bit);
 
                             if bit == 0 { raise_flag!(z); } else { lower_flag!(z); }
                             lower_flag!(n);
@@ -655,7 +657,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                                             // they become a problem)
                         },
                         0b0000000..=0b00000111 => {
-                            println!("RLC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                            print!("RLC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                             if *reg >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             *reg = (*reg << 1) | (*reg >> 7);
@@ -666,7 +668,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                             lower_flag!(c);
                         },
                         0b0001000..=0b00001111 => {
-                            println!("RRC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                            print!("RRC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                             if *reg & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             *reg = (*reg >> 1) | (*reg << 7);
@@ -677,7 +679,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                             lower_flag!(c);
                         },
                         0b00111000..=0b00111111 => {
-                            println!("SRL {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                            print!("SRL {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                             if A & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             A = A >> 1;
@@ -688,7 +690,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         },
                         0b00011000..=0b00011111 => {
                             let carry: u8 = gimme_flag!(c);
-                            println!("RR {:}:{:}:{:2X?} c:{:}", selected_register, repr_8bit!(selected_register), *reg, carry);
+                            print!("RR {:}:{:}:{:2X?} c:{:}", selected_register, repr_8bit!(selected_register), *reg, carry);
 
                             if *reg & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             *reg = (*reg >> 1) | (carry << 7);
@@ -698,7 +700,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                             lower_flag!(h);
                         },
                         0b00101000..=0b00101111 => {
-                            println!("SRA {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                            print!("SRA {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                             if *reg & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             *reg = *reg >> 1;
@@ -708,7 +710,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                             lower_flag!(h);
                         },
                         0b00100000..=0b00100111 => {
-                            println!("SLA {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                            print!("SLA {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                             if *reg >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                             *reg = *reg << 1;
@@ -718,7 +720,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                             lower_flag!(h);
                         },
                         0b00110000..=0b00110111 => {
-                            println!("SWAP {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                            print!("SWAP {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                             *reg = (*reg >> 4) | (*reg << 4);
                             if *reg == 0 { raise_flag!(z); } else { lower_flag!(z); }
@@ -726,6 +728,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                             lower_flag!(h);
                             lower_flag!(c);
                         },
+                        0x80..=0xBF => {
+                            let selected_bit = selected_register >> 3 & 0b111;
+                            print!("RES bit {:} reg {:}", selected_bit, repr_8bit!(selected_register));
+
+                            // set the relevant bit to 0.
+                            *reg &= 0x01 << selected_bit ^ 0xFF;
+                        },
+                        0x80..=0xBF => {
+                            let selected_bit = selected_register >> 3 & 0b111;
+                            print!("SET bit {:} reg {:}", selected_bit, repr_8bit!(selected_register));
+
+                            // set the relevant bit to 1.
+                            *reg |= 0x01 << selected_bit;
+                        }
 
                         _ => { println!("panik! {:2X?}", prefix_instruction); break; }
                     }
@@ -733,12 +749,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     PC += 1
                 },
                 0x2F => {
-                    println!("COMPLEMENT ACCUMULATOR");
+                    print!("COMPLEMENT ACCUMULATOR");
                 },
                 0xCD => {
                     // used in boot rom; completed
                     // adds address of next instruction to stack, and then executes an implicit "JP" i.e. implicitly jumps
-                    println!("CALL {:4X?} {:4X?}", data[(PC+1) as usize], data[(PC+2) as usize]);
+                    print!("CALL {:4X?} {:4X?}", data[(PC+1) as usize], data[(PC+2) as usize]);
 
                     stack.push(((PC+3) >> 8) as u8);
                     stack.push((PC+3) as u8);
@@ -754,16 +770,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let selected_register = (current_instruction >> 4) & 0b11;
                     let lsb = data[(PC+1) as usize];
                     let msb = data[(PC+2) as usize];
-                    println!("LD nn {:2X?}:{:} {:2X?} {:2X?}", selected_register, repr_16bit!(SP, selected_register), msb, lsb);
+                    print!("LD nn {:2X?}:{:} {:2X?} {:2X?}", selected_register, repr_16bit!(SP, selected_register), msb, lsb);
 
                     set_16bit!(selected_register, lsb, msb);
 
-                    PC += 2
+                    PC += 2;
                 },
                 0b00000011 | 0b00010011 | 0b00100011 | 0b00110011 => { // 0b00xx0011
                     // used in boot rom; complete
                     let selected_register = (current_instruction >> 4) & 0b11;
-                    println!("INC 16bit {:2X?}:{:}", selected_register, repr_16bit!(SP, selected_register));
+                    print!("INC 16bit {:2X?}:{:}", selected_register, repr_16bit!(SP, selected_register));
 
                     fn increment (A: &mut u8, B: &mut u8)
                     {
@@ -778,29 +794,29 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     match selected_register
                     {
                         0b00 => {
-                            // println!("setting BC.");
+                            // print!("setting BC.");
                             increment(&mut B, &mut C);
                         }
                         0b01 => {
-                            // println!("setting DE.");
+                            // print!("setting DE.");
                             increment(&mut D, &mut E);
                         }
                         0b10 => {
-                            // println!("setting HL.");
+                            // print!("setting HL.");
                             increment(&mut H, &mut L);
                         }
                         0b11 => {
-                            // println!("setting SP.");
+                            // print!("setting SP.");
                             SP += 1;
                         }
-                        _ => { println!("panik!"); }
+                        _ => { println!("panik!"); break; }
                     }
                 },
 
                 0b00000100 | 0b00001100 | 0b00010100 | 0b00011100 | 0b00100100 | 0b00101100 | 0b00110100 | 0b00111100 => { // 0b00xxx100
                     // used in boot rom; completed
                     let selected_register: u8 = (current_instruction >> 3) & 0b111;
-                    println!("INC 8bit {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("INC 8bit {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     macro_rules! increment {
                         ($A:expr) =>
@@ -826,7 +842,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // used in boot rom; complete
 
                     let selected_register = (current_instruction >> 4) & 0b11;
-                    println!("DEC 16bit {:2X?}:{:}", selected_register, repr_16bit!(SP, selected_register));
+                    print!("DEC 16bit {:2X?}:{:}", selected_register, repr_16bit!(SP, selected_register));
 
                     fn decrement (A: &mut u8, B: &mut u8)
                     {
@@ -842,14 +858,14 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         0b01 => decrement(&mut D, &mut E),
                         0b10 => decrement(&mut H, &mut L),
                         0b11 => SP -= 1,
-                        _ => println!("panik!")
+                        _ => { println!("panik!"); break; }
                     }
                 },
                 0b00000101 | 0b00001101 | 0b00010101 | 0b00011101 | 0b00100101 | 0b00101101 | 0b00110101 | 0b00111101 => { // 0b00xxx101
                     // used in boot rom; complete
 
                     let selected_register = (current_instruction >> 3) & 0b111;
-                    println!("DEC 8bit {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("DEC 8bit {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     macro_rules! decrement {
                         ($A:expr) =>
@@ -875,7 +891,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // used in boot rom; completed
                     let selected_register = (current_instruction >> 3) & 0b111;
                     let value = data[(PC+1) as usize];
-                    println!("LD n {:2X?}:{:} {:2X?}", selected_register, repr_8bit!(selected_register), value);
+                    print!("LD n {:2X?}:{:} {:2X?}", selected_register, repr_8bit!(selected_register), value);
 
                     let reg: &mut u8 = mut_8bit_reg!(selected_register);
                     *reg = value;
@@ -884,7 +900,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
 
                 0b00001111 => {
-                    println!("RRCA");
+                    print!("RRCA");
 
                     if A & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                     A = (A >> 1) | (A << 7);
@@ -896,7 +912,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                 0b00011111 => {
                     let carry: u8 = gimme_flag!(c);
-                    println!("RRA A:{:2X?} c:{:}", A, carry);
+                    print!("RRA A:{:2X?} c:{:}", A, carry);
 
                     if A & 0b1 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                     A = (A >> 1) | (carry << 7);
@@ -906,7 +922,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     lower_flag!(h);
                 },
                 0b00000111 => {
-                    println!("RLCA A:{:2X?}", A);
+                    print!("RLCA A:{:2X?}", A);
 
                     if A >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                     A = (A << 1) | (A >> 7);
@@ -919,7 +935,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // used in boot rom; complete
 
                     let carry: u8 = gimme_flag!(c);
-                    println!("RLA A:{:2X?} c:{:}", A, carry);
+                    print!("RLA A:{:2X?} c:{:}", A, carry);
 
                     if A >> 7 == 1 { raise_flag!(c); } else { lower_flag!(c); }
                     A = A << 1 | carry;
@@ -931,7 +947,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b00011000 => {
                     // used in boot rom(?); complete
                     let offset = data[(PC+1) as usize];
-                    println!("JR relative, {:2X?}", offset);
+                    print!("JR relative, {:2X?}", offset);
 
                     if (offset >> 7) & 0b1 == 0b1
                     { PC -= (offset ^ 0xFF).overflowing_add(1).0 as u16; }
@@ -944,65 +960,65 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b00000010 | 0b00010010 | 0b00100010 | 0b00110010 => { // 00xx0010 
                     // used in boot rom; complete
                     let selected_register = (current_instruction >> 4) & 0b11;
-                    println!("LD A to 16bit addr {:2X?}:({:})", selected_register, repr_16bit!(HL, selected_register));
+                    print!("LD A to 16bit addr {:2X?}:({:})", selected_register, repr_16bit!(HL, selected_register));
 
                     match selected_register {
                         0b00 => { // 00xxx010 (maybe?)
-                            // println!("load data to BC addr from Areg");
+                            // print!("load data to BC addr from Areg");
                             data[eval_16bit!(B, C) as usize] = A;
                         },
                         0b01 => { // 00xxx010 (maybe?)
-                            // println!("load data to DE addr from Areg");
+                            // print!("load data to DE addr from Areg");
                             data[eval_16bit!(D, E) as usize] = A;
                         },
                         0b10 => { // 00xxx010 (maybe?)
-                            // println!("load data to HL+ addr from Areg");
+                            // print!("load data to HL+ addr from Areg");
                             data[eval_16bit!(H, L) as usize] = A;
 
                             let newHL = eval_16bit!(H, L).overflowing_add(1).0;
                             set_16bit!(0b10, newHL as u8, (newHL >> 8) as u8)
                         },
                         0b11 => { // 00xxx010 (maybe?)
-                            // println!("load data to HL- addr from Areg");
+                            // print!("load data to HL- addr from Areg");
                             data[eval_16bit!(H, L) as usize] = A;
 
                             let newHL = eval_16bit!(H, L).overflowing_add(0xFFFF).0;
                             set_16bit!(0b10, newHL as u8, (newHL >> 8) as u8);
                         },
-                        _ => { println!("panik! {:2X?}", selected_register); }
+                        _ => { println!("panik! {:2X?}", selected_register); break; }
                     }
 
-                    // println!("tiledat: {:2X?}", &data[0x8000..0x8200]);
-                    // println!("tilemap: {:2X?}", &data[0x9800..0x9C00]);
-                    // println!("logo_cart: {:2X?}", &data[0x104..0x104+16*3]);
-                    // println!("logo_dmg : {:2X?}", &data[0xA8..0xA8+16*3]);
+                    // print!("tiledat: {:2X?}", &data[0x8000..0x8200]);
+                    // print!("tilemap: {:2X?}", &data[0x9800..0x9C00]);
+                    // print!("logo_cart: {:2X?}", &data[0x104..0x104+16*3]);
+                    // print!("logo_dmg : {:2X?}", &data[0xA8..0xA8+16*3]);
                 },
 
                 0b00001010 | 0b00011010 | 0b00101010 | 0b00111010 => { // 00xx1010 
                     // used in boot rom; complete
                     let selected_register = (current_instruction >> 4) & 0b11;
-                    println!("LD 16bit addr to A {:2X?}:({:})", selected_register, repr_16bit!(HL, selected_register));
+                    print!("LD 16bit addr to A {:2X?}:({:})", selected_register, repr_16bit!(HL, selected_register));
 
                     match selected_register {
                         0b00 => { // 00xxx010 (maybe?)
-                            // println!("load data from BC addr to Areg");
+                            // print!("load data from BC addr to Areg");
                             A = data[eval_16bit!(B, C) as usize];
                         },
                         0b01 => { // 00xxx010 (maybe?)
-                            // println!("load data from DE addr to Areg");
+                            // print!("load data from DE addr to Areg");
                             A = data[eval_16bit!(D, E) as usize];
                         },
                         0b10 => { // 00xxx010 (maybe?)
-                            // println!("load data from HL+ addr to Areg");
+                            // print!("load data from HL+ addr to Areg");
                             A = data[eval_16bit!(H, L) as usize];
                             set_16bit!(0b10, eval_16bit!(H, L).overflowing_add(1).0 as u8, (eval_16bit!(H, L).overflowing_add(1).0 >> 8) as u8)
                         },
                         0b11 => { // 00xxx010 (maybe?)
-                            // println!("load data from HL- addr to Areg");
+                            // print!("load data from HL- addr to Areg");
                             A = data[eval_16bit!(H, L) as usize];
                             set_16bit!(0b10, eval_16bit!(H, L).overflowing_add(0xFE).0 as u8, (eval_16bit!(H, L).overflowing_add(0xFE).0 >> 8) as u8)
                         },
-                        _ => { println!("panik! {:2X?}", selected_register); }
+                        _ => { println!("panik! {:2X?}", selected_register); break; }
                     }
                 },
 
@@ -1010,7 +1026,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let lsb = data[(PC+1) as usize] as u16;
                     let msb = (data[(PC+2) as usize] as u16) << 8;
 
-                    println!("uncond absolute jump dest1:{:2X?} dest2:{:2X?}", msb, lsb);
+                    print!("uncond absolute jump dest1:{:2X?} dest2:{:2X?}", msb, lsb);
                     PC = msb | lsb;
                     skip_increment = true;
                 },
@@ -1029,7 +1045,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         _ => todo!()
                     };
 
-                    println!("cond relative jump x:{} dest:{} f:{}", e, format!("{e:#b}"), relevant_flag);
+                    print!("cond relative jump x:{} dest:{} f:{}", e, format!("{e:#b}"), relevant_flag);
 
                     if relevant_flag != 0 {
                         if sign == 1
@@ -1042,7 +1058,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
 
                 0b00001001 | 0b00011001 | 0b00101001 | 0b00111001 => { // 0b00xx1001
-                    println!("add with 16bit & store");
+                    print!("add with 16bit & store");
 
                     let selected_register = (current_instruction >> 4) & 0b11;
                     let incr = match selected_register {
@@ -1069,7 +1085,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     // used in boot rom; complete
                     let selected_register_A = (current_instruction >> 3) & 0b111;
                     let selected_register_B = (current_instruction) & 0b111;
-                    println!("load {:2X?}:{:} {:2X?}:{:}", selected_register_A, repr_8bit!(selected_register_A), selected_register_B, repr_8bit!(selected_register_B));
+                    print!("load {:2X?}:{:} {:2X?}:{:}", selected_register_A, repr_8bit!(selected_register_A), selected_register_B, repr_8bit!(selected_register_B));
 
                     let reg2: u8 = reg_8bit!(selected_register_B);
                     let reg1: &mut u8 = mut_8bit_reg!(selected_register_A);
@@ -1078,7 +1094,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0x80..=0x87 => {
                     // used in boot rom; complete
                     let selected_register = current_instruction & 0b111;
-                    println!("ADD {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("ADD {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     let reg: u8 = reg_8bit!(selected_register);
                     let result = (A).overflowing_add(reg);
@@ -1092,7 +1108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0x88..=0x8F => {
                     let selected_register = current_instruction & 0b111;
-                    println!("ADC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("ADC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     let reg: u8 = reg_8bit!(selected_register);
 
@@ -1109,7 +1125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0x90..=0x97 => {
                     // used in boot rom; completed
                     let selected_register = current_instruction & 0b111;
-                    println!("SUB {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("SUB {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     let reg: u8 = reg_8bit!(selected_register);
 
@@ -1125,7 +1141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0x98..=0x9F => {
                     let selected_register = current_instruction & 0b111;
-                    println!("SBC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("SBC {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     let reg: u8 = reg_8bit!(selected_register);
 
@@ -1142,7 +1158,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0xA0..=0xA7 => {
                     // used in boot rom; completed
                     let selected_register = current_instruction & 0b111;
-                    println!("AND {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("AND {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     A &= reg_8bit!(selected_register);
 
@@ -1154,20 +1170,20 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0xA8..=0xAF => {
                     // used in boot rom; completed
                     let selected_register = current_instruction & 0b111;
-                    println!("XOR, {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("XOR, {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     A ^= reg_8bit!(selected_register);
                 },
                 0xB0..=0xB7 => {
                     let selected_register = current_instruction & 0b111;
-                    println!("OR, {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("OR, {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     A |= reg_8bit!(selected_register);
                 },
                 0xB8..=0xBF => {
                     // used in boot rom; completed
                     let selected_register = current_instruction & 0b111;
-                    println!("CP {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
+                    print!("CP {:2X?}:{:}", selected_register, repr_8bit!(selected_register));
 
                     let reg: u8 = reg_8bit!(selected_register);
                     
@@ -1184,7 +1200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b11000001 | 0b11010001 | 0b11100001 | 0b11110001 => { // 0b11xx0001
                     // used in boot rom; completed
                     let selected_register = (current_instruction >> 4) & 0b11;
-                    println!("POP {:2X?}:{:}", selected_register, repr_16bit!(AF, selected_register));
+                    print!("POP {:2X?}:{:}", selected_register, repr_16bit!(AF, selected_register));
 
                     let reg1: &mut u8;
                     let reg2: &mut u8;
@@ -1195,7 +1211,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         0b01 => { reg1 = &mut D; reg2 = &mut E; }
                         0b10 => { reg1 = &mut H; reg2 = &mut L; }
                         0b11 => { reg1 = &mut A; reg2 = &mut F; }
-                        _ => { println!("panik! {:2X?}", selected_register); reg1 = &mut A; reg2 = &mut F; }
+                        _ => { println!("panik! {:2X?}", selected_register); reg1 = &mut A; reg2 = &mut F; break; }
                     }
 
                     *reg2 = stack.pop().unwrap();
@@ -1204,7 +1220,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
 
                 0b11000100 | 0b11001100 | 0b11010100 | 0b11011100 => { // 0b110xx100
-                    println!("conditional call");
+                    print!("conditional call");
 
                     let lsb = data[(PC+1) as usize] as u16;
                     let msb = (data[(PC+2) as usize] as u16) << 8;
@@ -1230,7 +1246,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
 
                 0b11000010 | 0b11001010 | 0b11010010 | 0b11011010 => { // 0b110xx010
-                    println!("conditional jump");
+                    print!("conditional jump");
 
                     let lsb = data[(PC+1) as usize] as u16;
                     let msb = (data[(PC+2) as usize] as u16) << 8;
@@ -1263,7 +1279,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                     let direction = (current_instruction >> 4) & 0b1;
                     let use_Creg = (current_instruction >> 1) & 0b1;
-                    print!("load to({})/from({}) accumulator (in)direct C:{:2X?}", direction, 1-direction, use_Creg);
+                    print!("ad to({})/from({}) accumulator (in)direct C:{:2X?}", direction, 1-direction, use_Creg);
 
                     let offset: usize;
                     if use_Creg == 1 { offset = (0xFF00 | C as u16) as usize; } else { offset = (0xFF00 | data[(PC+1) as usize] as u16) as usize; } // TODO: does rust have cond ? trueVal : FalsVal
@@ -1273,8 +1289,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         print!(" {:4X?}", data[(PC+1) as usize]);
                         PC += 1;
                     }
-                    print!("\n");
-
                 },
 
                 0b11111010  => { // TODO: merge the similar logic in this with the next case (opcode 11101010)
@@ -1283,7 +1297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let msb = (data[(PC+2) as usize] as u16) << 8;
                     let addr = lsb | msb;
                     
-                    println!("load to A from 16bit addr {:2X?}", addr);
+                    print!("load to A from 16bit addr {:2X?}", addr);
                     A = data[addr as usize];
                     PC += 2
                 },
@@ -1294,24 +1308,24 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let msb = (data[(PC+2) as usize] as u16) << 8;
                     let addr = lsb | msb;
                     
-                    println!("load from A to 16bit addr {:2X?}", addr);
+                    print!("load from A to 16bit addr {:2X?}", addr);
                     data[addr as usize] = A;
                     PC += 2
                 },
 
                 0b11111001 => {
-                    println!("load SP from HL");
+                    print!("load SP from HL");
                     SP = eval_16bit!(H, L);
                 },
 
                 0b11111011 => {
                     // used in boot rom; completed(?)
-                    println!("schedule to enable interrupts after next cycle");
+                    print!("schedule to enable interrupts after next cycle");
                     delay_IME = true;
                 },
 
                 0b11000000 | 0b11001000 | 0b11010000 | 0b11011000 => { // 0b110xx000
-                    println!("COND RET {}", gimme_flag!(z));
+                    print!("COND RET {}", gimme_flag!(z));
 
                     if gimme_flag!(z) != 1 {
                         let lsb: u16 = stack.pop().unwrap() as u16;
@@ -1325,7 +1339,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0b11001001 => {
                     // used in boot rom; completed
-                    println!("unconditional ret");
+                    print!("unconditional ret");
 
                     let lsb: u16 = stack.pop().unwrap() as u16;
                     let msb: u16 = (stack.pop().unwrap() as u16) << 8;
@@ -1337,7 +1351,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0b11011001 => {
                     // used in boot rom; completed
-                    println!("reti");
+                    print!("reti");
 
                     let lsb: u16 = stack.pop().unwrap() as u16;
                     let msb: u16 = (stack.pop().unwrap() as u16) << 8;
@@ -1352,7 +1366,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0b11000101 | 0b11010101 | 0b11100101 | 0b11110101 => { // 0b11xx0101
                     // used in boot rom; completed
                     let selected_register = (current_instruction >> 4) & 0b11;
-                    println!("PUSH {:2X?}:{:}", selected_register, repr_16bit!(AF, selected_register));
+                    print!("PUSH {:2X?}:{:}", selected_register, repr_16bit!(AF, selected_register));
 
                     let reg1: &u8;
                     let reg2: &u8;
@@ -1363,7 +1377,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                         0b01 => { reg1 = &D; reg2 = &E; }
                         0b10 => { reg1 = &H; reg2 = &L; }
                         0b11 => { reg1 = &A; reg2 = &F; }
-                        _ => { println!("panik! {:2X?}", selected_register); reg1 = &A; reg2 = &F; }
+                        _ => { println!("panik! {:2X?}", selected_register); reg1 = &A; reg2 = &F; break; }
                     }
 
                     stack.push(*reg1);
@@ -1372,21 +1386,21 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0b11000111 | 0b11001111 | 0b11010111 | 0b11011111 | 0b11100111 | 0b11101111 | 0b11110111 | 0b11111111 => { // 0b11xxx111
                     let selected_jump_vec = (current_instruction >> 3) & 0b111;
-                    println!("RST / FN CALL {}", selected_jump_vec);
+                    print!("RST / FN CALL {} {:X?}", selected_jump_vec, data[0x38]);
 
                     stack.push(((PC+1) >> 8) as u8);
                     stack.push((PC+1) as u8);
                     SP -= 2;
 
-                    PC = data[[0x0000, 0x0008, 0x0010, 0x0018, 0x0020, 0x0028, 0x0030, 0x0038][selected_jump_vec as usize]] as u16; // note: this is stupid. just do data[8 * selected_jump_vec];
+                    PC = data[8 * selected_jump_vec as usize] as u16;
                     skip_increment = true;
                 },
                 0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => { // undefined opcodes
-                    println!("UNDEFINED OPCODE!!");
+                    println!("UNDEFINED OPCODE!!"); break;
                 },
                 0xC6 => {
                     let word = data[(SP+1) as usize];
-                    println!("ADD {:2X?}", word);
+                    print!("ADD {:2X?}", word);
 
                     let result = (A).overflowing_add(word);
 
@@ -1400,7 +1414,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0xD6 => {
                     let word = data[(SP+1) as usize];
-                    println!("SUB {:2X?}", word);
+                    print!("SUB {:2X?}", word);
 
                     let result = (A).overflowing_add( (0xFF ^ word).overflowing_add(1).0 ); // two's complement moment
 
@@ -1414,7 +1428,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0xE6 => {
                     let word = data[(SP+1) as usize];
-                    println!("AND {:2X?}", word);
+                    print!("AND {:2X?}", word);
 
                     A &= word;
 
@@ -1426,10 +1440,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0xF6 => {
                     let word = data[(SP+1) as usize];
-                    println!("OR, {:2X?}", word);
+                    print!("OR, {:2X?}", word);
 
                     A |= word;
                     PC += 1;
+
+                    if A == 0 { raise_flag!(z) } else { lower_flag!(z); }
+                    lower_flag!(n);
+                    lower_flag!(h);
+                    lower_flag!(c);
                 }
                 0x27 | 55 | 63 | 232 | 233 | 248 => {
                     println!("UNIMPLEMENTED INSTRUCTION :((");
@@ -1438,7 +1457,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                 0xCE => {
                     // used in boot rom; completed
-                    println!("ADC literal {:2X?}", data[(PC+1) as usize]);
+                    print!("ADC literal {:2X?}", data[(PC+1) as usize]);
 
                     // execute sum and deal with overflow
                     let mut result = A.overflowing_add(data[(PC+1) as usize]);
@@ -1453,11 +1472,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                     A = result.0;
                     PC += 1;
-                    // println!("A is now {:2X?} | F is now {:2X?}", A, F);
+                    // print!("A is now {:2X?} | F is now {:2X?}", A, F);
                 },
                 0xDE => {
                     let word = data[(SP+1) as usize];
-                    println!("SBC {:2X?}", word);
+                    print!("SBC {:2X?}", word);
 
                     let mut result = (A).overflowing_add( (0xFF ^ word).overflowing_add(1).0 ); // two's complement moment
                     result = result.0.overflowing_add( (gimme_flag!(c) ^ 0xFF).overflowing_add(1).0 ); // subtract carry flag
@@ -1472,7 +1491,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0xEE => {
                     let word = data[(SP+1) as usize];
-                    println!("XOR, {:2X?}", word);
+                    print!("XOR, {:2X?}", word);
 
                     A ^= word;
                     PC += 1;
@@ -1480,7 +1499,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 0xFE => {
                     // used in boot rom; completed
                     let val = data[(PC.overflowing_add(1).0) as usize];
-                    println!("CP n {:2X?}", val);
+                    print!("CP n {:2X?}", val);
 
                     let result = A.overflowing_add((val ^ 0xFF).overflowing_add(1).0); // two's compliment moment
 
@@ -1493,8 +1512,24 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
                     PC += 1
                 }
-
             }
+
+            #[cfg(feature = "not_print_inplace")]
+            { print!("\n"); }
+
+            #[cfg(not(feature = "not_print_inplace"))]
+            {
+                if !recent_execs.contains(&last_PC)
+                { print!("\n"); }
+                else
+                { print!("\r"); }
+            }
+
+            if PC > 10
+            {
+                recent_execs.remove(0);
+            }
+            recent_execs.push(last_PC);
             
             if !skip_increment { PC += 1; }
             else { skip_increment = false; }
@@ -1503,10 +1538,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             if data[0xFF02] >> 7 == 1
             {
                 // for now, just pretend to be disconnected.
-                data[0xFF02] &= 0b01111111;
-                data[0xFF01] = 0xFF; // when disconnected, the serial link just reads in 1s.
+                data[0xFF01] = (data[0xFF01] << 1) | 0b1; // when disconnected, the serial link just reads in 1s.
+                serial_progress += 1;
 
-                data[0xFF0F] |= 0b00001000; // also, enable flag for serial transfer completed.
+                if serial_progress >= 8
+                {
+                    serial_progress = 0;
+                    data[0xFF02] &= 0b01111111; // turn off transfer enable now that we're done.
+                    data[0xFF0F] |= 0b00001000; // also, enable flag for serial transfer completed.
+                }
             }
 
             // interrupt handler
@@ -1571,6 +1611,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             {
                 println!("UNMAPPING BOOT ROM!!!");
                 let original_data: Vec<u8> = fs::read("roms/Tetris.gb").unwrap();
+                // let original_data: Vec<u8> = fs::read("roms/Tamagotchi.gb").unwrap();
+                // let original_data: Vec<u8> = fs::read("roms/qbert.gb").unwrap();
+                // let original_data: Vec<u8> = fs::read("roms/asteroids.gb").unwrap();
                 for i in 0..0x100 { data[i] = original_data[i]; }
                 data[0xFF50] = 0;
             }
@@ -1580,7 +1623,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             // break when boot rom logo finishes scrolling
             // if data[0xFF42] == 3 { break; }
             
-            if PC == 0x9999 { drop(data); break; }
+            // if PC == 0x9999 { drop(data); break; }
             // if PC >= 0x100 { PC = 0; }
 
             if unmapped { stdin().read(&mut [0]).unwrap(); }
