@@ -1291,25 +1291,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     }
                 },
 
-                0b11111010  => { // TODO: merge the similar logic in this with the next case (opcode 11101010)
-                    // used in boot rom/ completed
-                    let lsb = data[(PC+1) as usize] as u16;
-                    let msb = (data[(PC+2) as usize] as u16) << 8;
-                    let addr = lsb | msb;
-                    
-                    print!("load to A from 16bit addr {:2X?}", addr);
-                    A = data[addr as usize];
-                    PC += 2
-                },
-
-                0b11101010 => {
+                0b11111010 | 0b11101010 => { // TODO: merge the similar logic in this with the next case (opcode 11101010)
                     // used in boot rom; completed
                     let lsb = data[(PC+1) as usize] as u16;
                     let msb = (data[(PC+2) as usize] as u16) << 8;
                     let addr = lsb | msb;
                     
-                    print!("load from A to 16bit addr {:2X?}", addr);
-                    data[addr as usize] = A;
+                    if current_instruction >> 4 & 0b1 == 1
+                    {
+                        print!("load to A from 16bit addr {:2X?}", addr);
+                        A = data[addr as usize];
+                    }
+                    else
+                    {
+                        print!("load from A to 16bit addr {:2X?}", addr);
+                        data[addr as usize] = A;
+                    }
+
                     PC += 2
                 },
 
