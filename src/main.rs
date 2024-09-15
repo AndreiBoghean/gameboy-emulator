@@ -50,9 +50,9 @@ impl ApplicationHandler for App {
         // Clear the pixel buffer
         let frame = self.pixels.as_mut().unwrap().frame_mut();
         for pixel in frame.chunks_exact_mut(4) {
-            pixel[0] = 0x00; // R
-            pixel[1] = 0x00; // G
-            pixel[2] = 0x99; // B
+            pixel[0] = 0x99; // R
+            pixel[1] = 0x99; // G
+            pixel[2] = 0x00; // B
             pixel[3] = 0xff; // A
         }
 
@@ -79,47 +79,44 @@ impl ApplicationHandler for App {
         // println!("tiledata: {:2X?}", tiledata);
 
         let mut frame: Vec<u8> = Vec::new();
-        frame.resize(4*256*256, 0);
+        frame.resize(4*256*256, 0xFF);
 
         // for i in 0..tilemap.len() {
         for i in 0..tilemap.len() {
             let tile_id: u16 = tilemap[i] as u16;
-            if true || tile_id == 0x19 {
-                let tile_data = &tiledata[(tile_id*16) as usize .. ((tile_id+1)*16) as usize];
-                // println!("I:{} tileID:{:2X?} tile_data:{:2X?}", i, tile_id, tile_data);
+            let tile_data = &tiledata[(tile_id*16) as usize .. ((tile_id+1)*16) as usize];
+            // println!("I:{} tileID:{:2X?} tile_data:{:2X?}", i, tile_id, tile_data);
 
-                let col: usize = i % 32 as usize;
-                let row: usize = (i / 32) as u32 as usize;
+            let col: usize = i % 32 as usize;
+            let row: usize = (i / 32) as u32 as usize;
 
-                for tile_y in 0..8 {
-                    let tile_row_vec = &tile_data[tile_y*2..(tile_y+1)*2];
-                    // let tile_row: u16 = ((tile_row_vec[0] as u16) << 8) | (tile_row_vec[1] as u16);
+            for tile_y in 0..8 {
+                let tile_row_vec = &tile_data[tile_y*2..(tile_y+1)*2];
+                // let tile_row: u16 = ((tile_row_vec[0] as u16) << 8) | (tile_row_vec[1] as u16);
 
-                    let mut binA = tile_row_vec[0] as u16;
-                    let mut binB = tile_row_vec[0] as u16;
-                    // println!("binA:{}", format!("{binA:#b}"));
-                    // println!("binB:{}", format!("{binB:#b}"));
-                    for b_p in 0..8 {
+                let mut binA = tile_row_vec[0] as u16;
+                let mut binB = tile_row_vec[0] as u16;
+                // println!("binA:{}", format!("{binA:#b}"));
+                // println!("binB:{}", format!("{binB:#b}"));
+                for b_p in 0..8 {
 
-                        binA = ((binA & (0xFFFF << 7-b_p)) << 1) | (binA & 0b01111111 >> (b_p));
-                        binB = ((binB & (0xFFFF << 7-b_p)) << 1) | (binB & 0b01111111 >> (b_p));
-                        // println!("bp:{} binA:{}", b_p, format!("{binA:#b}"));
-                        // println!("bp:{} binB:{}", b_p, format!("{binB:#b}"));
-                    }
-
-                    binB = binB >> 1;
-                    let tile_row: u16 = binA | binB;
-
-                    for b_i in 0..8 {
-                        let colour_id = (tile_row >> (14-b_i*2)) & 0b11;
-                        // print!("{}|", colour_id);
-                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+0] = (0xff * colour_id/4) as u8;
-                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+1] = (0xff * colour_id/4) as u8;
-                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+2] = (0xff * colour_id/4) as u8;
-                        frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+3] = 0xff;
-                    }
-                    // println!("");
+                    binA = ((binA & (0xFFFF << 7-b_p)) << 1) | (binA & 0b01111111 >> (b_p));
+                    binB = ((binB & (0xFFFF << 7-b_p)) << 1) | (binB & 0b01111111 >> (b_p));
+                    // println!("bp:{} binA:{}", b_p, format!("{binA:#b}"));
+                    // println!("bp:{} binB:{}", b_p, format!("{binB:#b}"));
                 }
+
+                binB = binB >> 1;
+                let tile_row: u16 = binA | binB;
+
+                for b_i in 0..8 {
+                    let colour_id = 3 - ((tile_row >> (14-b_i*2)) & 0b11);
+                    frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+0] = (0xff * colour_id/3) as u8;
+                    frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+1] = (0xff * colour_id/3) as u8;
+                    frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+2] = (0xff * colour_id/3) as u8;
+                    frame[(row*(256*8)+col*8 + tile_y*256+b_i)*4+3] = 0xff;
+                }
+                // println!("");
             }
         }
 
@@ -150,11 +147,15 @@ impl ApplicationHandler for App {
         #[cfg(feature = "scroll_debug")]
         {
             for i in 0..256*256 {
-                real_frame[i*4+0] = 0x00;
-                real_frame[i*4+1] = 0x00;
-                real_frame[i*4+2] = 0xff;
-                real_frame[i*4+3] = 0xff;
-            }
+                // real_frame[i*4+0] = 0x00;
+                // real_frame[i*4+1] = 0x00;
+                // real_frame[i*4+2] = 0xff;
+                // real_frame[i*4+3] = 0xff;
+                real_frame[i*4+0] = frame[i*4+0];
+                real_frame[i*4+1] = frame[i*4+1];
+                real_frame[i*4+2] = frame[i*4+2];
+                real_frame[i*4+3] = frame[i*4+3]; 
+            }                        
         }
 
         for i in 0..144*160 {
@@ -605,7 +606,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             {
                 let IF = data[0xFF0F];
                 print!("S: {:2X?} A:{:2X?} F:{:2X?} B:{:2X?} C:{:2X?} D:{:2X?} E:{:2X?} H:{:2X?} L:{:2X?} | SP:{:4X?}, BC:{:4X?}, DE:{:4X?}, HL:{:4X?} | ZNHC____:{:>8} ___JSTLV:{:>8} | IME:{} | sX:{:3} sY:{:3} || PC: {:4X?} | IR:{:4X?} - ",
-                    &stack[stack.len()-5..], A, F, B, C, D, E, H, L, SP, eval_16bit!(B, C), eval_16bit!(D, E), eval_16bit!(H, L), format!("{F:b}"), format!("{IF:b}"), IME, data[0xFF43], data[0xFF42], PC, current_instruction);
+                    &stack[stack.len()-6..], A, F, B, C, D, E, H, L, SP, eval_16bit!(B, C), eval_16bit!(D, E), eval_16bit!(H, L), format!("{F:b}"), format!("{IF:b}"), IME, data[0xFF43], data[0xFF42], PC, current_instruction);
             }
 
 
@@ -1384,13 +1385,14 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 },
                 0b11000111 | 0b11001111 | 0b11010111 | 0b11011111 | 0b11100111 | 0b11101111 | 0b11110111 | 0b11111111 => { // 0b11xxx111
                     let selected_jump_vec = (current_instruction >> 3) & 0b111;
-                    print!("RST / FN CALL {} {:X?}", selected_jump_vec, data[0x38]);
+                    print!("RST / FN CALL {}", selected_jump_vec);
 
                     stack.push(((PC+1) >> 8) as u8);
                     stack.push((PC+1) as u8);
                     SP -= 2;
 
-                    PC = data[8 * selected_jump_vec as usize] as u16;
+                    // PC = data[8 * selected_jump_vec as usize] as u16;
+                    PC = 8 * selected_jump_vec as u16;
                     skip_increment = true;
                 },
                 0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => { // undefined opcodes
@@ -1448,9 +1450,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                     lower_flag!(h);
                     lower_flag!(c);
                 }
-                0x27 | 55 | 63 | 232 | 233 | 248 => {
+                0xE9 => {
+                    print!("uncond absolute jump HL:{:2X?}", eval_16bit!(H, L));
+                    PC = eval_16bit!(H, L);
+                    skip_increment = true;
+                },
+
+                0x27 | 55 | 63 | 232 | 248 => {
                     println!("UNIMPLEMENTED INSTRUCTION :((");
-                    // break;
+                    break;
                 },
 
                 0xCE => {
@@ -1512,10 +1520,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 }
             }
 
-            #[cfg(feature = "not_print_inplace")]
+            #[cfg(any(feature = "not_print_inplace", feature="track_all_execs"))]
             { print!("\n"); }
 
-            #[cfg(not(feature = "not_print_inplace"))]
+            #[cfg(not(any(feature = "not_print_inplace", feature="track_all_execs")))]
             {
                 if !recent_execs.contains(&last_PC)
                 { print!("\n"); }
@@ -1523,11 +1531,26 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 { print!("\r"); }
             }
 
-            if PC > 10
+            #[cfg(feature = "not_print_inplace")]
             {
-                recent_execs.remove(0);
+                if PC > 10
+                {
+                    recent_execs.remove(0);
+                }
             }
+
+            #[cfg(feature = "track_all_execs")]
+            {
+                if ! recent_execs.contains(&last_PC)
+                { recent_execs.push(last_PC); }
+            }
+
+            #[cfg(feature = "not_print_inplace")]
             recent_execs.push(last_PC);
+
+            // if recent_execs.contains(&0x87)
+            // { stdin().read(&mut [0]).unwrap(); }
+
             
             if !skip_increment { PC += 1; }
             else { skip_increment = false; }
@@ -1608,6 +1631,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             if data[0xFF50] != 0
             {
                 println!("UNMAPPING BOOT ROM!!!");
+                recent_execs = Vec::new();
+
                 let original_data: Vec<u8> = fs::read("roms/Tetris.gb").unwrap();
                 // let original_data: Vec<u8> = fs::read("roms/Tamagotchi.gb").unwrap();
                 // let original_data: Vec<u8> = fs::read("roms/qbert.gb").unwrap();
@@ -1632,6 +1657,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         }
 
         let _ = fs::write("memDump.bin", data);
+
+        #[cfg(feature = "track_all_execs")]
+        println!("\r{:X?}", recent_execs);
     });
 
     let event_loop = EventLoop::new().unwrap();
